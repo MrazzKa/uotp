@@ -7,16 +7,22 @@ Requires-Dist: apscheduler>=3.10.4
 Requires-Dist: asyncpg>=0.29.0
 Requires-Dist: bcrypt<4.1
 Requires-Dist: email-validator>=2.2.0
-Requires-Dist: fastapi>=0.111.0
+Requires-Dist: fastapi>=0.118.0
+Requires-Dist: geoalchemy2>=0.15.2
+Requires-Dist: httpx>=0.27.0
+Requires-Dist: minio>=7.2.7
 Requires-Dist: passlib[bcrypt]>=1.7.4
+Requires-Dist: pgvector>=0.3.2
+Requires-Dist: pillow>=10.4.0
 Requires-Dist: pydantic-settings>=2.3.4
 Requires-Dist: pyjwt>=2.8.0
+Requires-Dist: pyotp>=2.9.0
+Requires-Dist: starlette>=0.49.1
 Requires-Dist: python-multipart>=0.0.9
 Requires-Dist: redis>=5.0.7
 Requires-Dist: sqlalchemy[asyncio]>=2.0.31
 Requires-Dist: uvicorn[standard]>=0.30.1
 Provides-Extra: dev
-Requires-Dist: httpx>=0.27.0; extra == "dev"
 Requires-Dist: pytest>=8.2.2; extra == "dev"
 Requires-Dist: pytest-asyncio>=0.23.7; extra == "dev"
 Requires-Dist: ruff>=0.5.0; extra == "dev"

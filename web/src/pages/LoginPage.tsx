@@ -4,6 +4,8 @@ import { FormEvent, useState } from "react";
 import { useTranslation } from "react-i18next";
 
 import { Button } from "../components/ui/Button";
+import { Card } from "../components/ui/Card";
+import { Input } from "../components/ui/Field";
 import { fetchMe, login } from "../lib/api";
 
 export function LoginPage() {
@@ -24,27 +26,27 @@ export function LoginPage() {
 
   return (
     <main className="grid min-h-screen place-items-center px-4">
-      <form onSubmit={onSubmit} className="w-full max-w-sm rounded-lg border border-border bg-background p-6 shadow-sm">
+      <Card as="form" onSubmit={onSubmit} className="w-full max-w-sm p-6">
         <div className="mb-6 flex items-center gap-3">
-          <div className="grid h-10 w-10 place-items-center rounded-md bg-muted">
+          <div className="grid h-10 w-10 place-items-center rounded-control bg-primarySoft text-primary">
             <LockKeyhole size={20} />
           </div>
           <h1 className="text-xl font-semibold">UOTP</h1>
         </div>
         <label className="mb-3 block text-sm">
           <span className="mb-1 block">{t("identifier")}</span>
-          <input className="h-10 w-full rounded-md border border-border bg-transparent px-3" value={identifier} onChange={(event) => setIdentifier(event.target.value)} />
+          <Input value={identifier} onChange={(event) => setIdentifier(event.target.value)} />
         </label>
         <label className="mb-5 block text-sm">
           <span className="mb-1 block">{t("password")}</span>
-          <input className="h-10 w-full rounded-md border border-border bg-transparent px-3" type="password" value={password} onChange={(event) => setPassword(event.target.value)} />
+          <Input type="password" value={password} onChange={(event) => setPassword(event.target.value)} />
         </label>
         <Button type="submit" disabled={mutation.isPending} className="w-full">
           <LogIn size={18} />
           {t("signIn")}
         </Button>
-        {mutation.isError ? <p className="mt-3 text-sm text-red-500">Login failed</p> : null}
-      </form>
+        {mutation.isError ? <p className="mt-3 text-sm text-red-500">{t("loginFailed")}</p> : null}
+      </Card>
     </main>
   );
 }

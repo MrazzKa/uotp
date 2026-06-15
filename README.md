@@ -43,11 +43,17 @@ npm run dev
 
 Для телефона в локальной сети укажите IP машины с backend в `mobile/app.json`, поле `expo.extra.apiUrl`, например `http://192.168.1.10:8000/api/v1`.
 
+Экран карты в Expo использует `react-native-maps`. В Expo Go на iPhone достаточно Apple Maps без ключа. Для будущей production Android-сборки понадобится Google Maps API key и dev build.
+
 ```powershell
 Set-Location mobile
 npm install
 npx expo start
 ```
+
+## Map
+
+Web-карта использует MapLibre GL JS. Источник тайлов по умолчанию: OpenFreeMap `liberty`; URL можно заменить через `VITE_MAP_STYLE_URL`. Если нужен raster fallback, его можно добавить отдельным style-конфигом без изменения backend API.
 
 ## Demo-логины
 

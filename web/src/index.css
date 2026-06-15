@@ -1,29 +1,112 @@
+@import "@fontsource-variable/inter";
+
 @tailwind base;
 @tailwind components;
 @tailwind utilities;
 
 :root {
-  --background: 210 20% 98%;
-  --foreground: 222 28% 12%;
-  --border: 214 18% 86%;
-  --primary: 186 68% 32%;
-  --muted: 210 18% 93%;
-  --accent: 42 86% 55%;
+  --bg: #f8fafc;
+  --surface: #ffffff;
+  --surface-2: #f5f7fa;
+  --border: #e5e7eb;
+  --text: #111827;
+  --text-muted: #6b7280;
+  --primary: #2563eb;
+  --primary-hover: #1d4ed8;
+  --primary-soft: #eff4ff;
+  --success: #22c55e;
+  --warning: #f59e0b;
+  --danger: #ef4444;
+  --info: #2563eb;
+  --chart-1: #2563eb;
+  --chart-2: #7c3aed;
+  --chart-3: #14b8a6;
+  --chart-4: #f59e0b;
+  --chart-5: #94a3b8;
+  --shadow-base: 0 1px 2px rgba(16, 24, 40, 0.06);
+  --shadow-card: 0 1px 3px rgba(16, 24, 40, 0.08);
+  --shadow-raised: 0 6px 20px rgba(16, 24, 40, 0.06);
+  color-scheme: light;
 }
 
 .dark {
-  --background: 225 16% 11%;
-  --foreground: 210 24% 96%;
-  --border: 220 13% 24%;
-  --primary: 174 62% 42%;
-  --muted: 222 14% 18%;
-  --accent: 42 80% 58%;
+  --bg: #0b1220;
+  --surface: #0f172a;
+  --surface-2: #1e293b;
+  --border: #334155;
+  --text: #f1f5f9;
+  --text-muted: #94a3b8;
+  --primary: #3b82f6;
+  --primary-hover: #60a5fa;
+  --primary-soft: #16233d;
+  --success: #34d399;
+  --warning: #fbbf24;
+  --danger: #f87171;
+  --info: #3b82f6;
+  --shadow-base: 0 1px 2px rgba(0, 0, 0, 0.18);
+  --shadow-card: 0 1px 3px rgba(0, 0, 0, 0.22);
+  --shadow-raised: 0 8px 24px rgba(0, 0, 0, 0.24);
+  color-scheme: dark;
+}
+
+* {
+  box-sizing: border-box;
 }
 
 body {
   margin: 0;
   min-width: 320px;
   min-height: 100vh;
-  background: hsl(var(--background));
-  color: hsl(var(--foreground));
+  background: var(--bg);
+  color: var(--text);
+  font-family: InterVariable, Inter, system-ui, sans-serif;
+  font-size: 14px;
+  line-height: 1.5;
+  font-variant-numeric: tabular-nums;
+}
+
+button,
+input,
+select,
+textarea {
+  font: inherit;
+}
+
+button,
+a {
+  -webkit-tap-highlight-color: transparent;
+}
+
+:focus-visible {
+  outline: 2px solid color-mix(in srgb, var(--primary) 75%, transparent);
+  outline-offset: 2px;
+}
+
+::selection {
+  background: var(--primary-soft);
+  color: var(--text);
+}
+
+.maplibregl-popup-content {
+  border-radius: 16px;
+  background: var(--surface);
+  color: var(--text);
+  border: 1px solid var(--border);
+  box-shadow: var(--shadow-raised);
+}
+
+.uotp-popup {
+  min-width: 180px;
+  font: 13px/1.45 InterVariable, Inter, system-ui, sans-serif;
+}
+
+.uotp-popup button {
+  margin-top: 8px;
+  width: 100%;
+  border: 0;
+  border-radius: 12px;
+  background: var(--primary);
+  color: white;
+  padding: 7px 10px;
+  cursor: pointer;
 }

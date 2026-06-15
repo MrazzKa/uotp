@@ -3,6 +3,7 @@ from datetime import UTC, datetime, timedelta
 from typing import Any
 
 import jwt
+import pyotp
 from passlib.context import CryptContext
 
 from app.config import settings
@@ -34,3 +35,29 @@ def create_token(subject: str, tenant_id: str, role: str, ttl_seconds: int, toke
 
 def decode_token(token: str) -> dict[str, Any]:
     return jwt.decode(token, settings.jwt_secret, algorithms=[settings.jwt_algorithm])
+
+
+def token_remaining_ttl(payload: dict[str, Any], now: datetime | None = None) -> int:
+    """Seconds left until the token's exp; 0 if already expired or no exp."""
+    exp = payload.get("exp")
+    if exp is None:
+        return 0
+    current = now or datetime.now(UTC)
+    remaining = int(exp - current.timestamp())
+    return max(remaining, 0)
+
+
+# --- TOTP (2FA) ---------------------------------------------------------------
+
+def generate_totp_secret() -> str:
+    return pyotp.random_base32()
+
+
+def verify_totp(secret: str, code: str) -> bool:
+    if not secret or not code:
+        return False
+    return pyotp.TOTP(secret).verify(code.strip(), valid_window=1)
+
+
+def totp_provisioning_uri(secret: str, account_name: str, issuer: str = "UOTP") -> str:
+    return pyotp.TOTP(secret).provisioning_uri(name=account_name, issuer_name=issuer)
