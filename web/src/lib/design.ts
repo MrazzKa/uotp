@@ -2,11 +2,9 @@ import type { IssueStatus } from "../types";
 
 export const chartPalette = ["#2563EB", "#7C3AED", "#14B8A6", "#F59E0B", "#94A3B8"];
 
-// Single source of truth for the status -> colour grouping, shared by the
-// Tailwind class helper (statusColor) and the map (statusHex). Keep these groups
-// in sync with the mobile token statusColor().
-const ACTIVE_STATUSES = ["QUALIFICATION", "ASSIGNED", "ACCEPTED", "IN_PROGRESS"];
-const REVIEW_STATUSES = ["COMPLETED", "INSPECTION", "RETURNED"];
+// Единый источник группировки статус -> цвет (используется бейджем и картой).
+const ACTIVE_STATUSES = ["NEW", "ASSIGNED"];
+const REVIEW_STATUSES = ["REVIEW_CONTROLLER", "REVIEW_AUTHOR"];
 
 const statusHexPalette = {
   overdue: "#EF4444",
@@ -21,7 +19,6 @@ export function statusHex(status: IssueStatus | string, isOverdue = false): stri
   if (ACTIVE_STATUSES.includes(status)) return statusHexPalette.active;
   if (REVIEW_STATUSES.includes(status)) return statusHexPalette.review;
   if (status === "CLOSED") return statusHexPalette.closed;
-  if (status === "REJECTED" || status === "DUPLICATE") return statusHexPalette.muted;
   return statusHexPalette.muted;
 }
 
@@ -59,16 +56,9 @@ export function statusColor(status: IssueStatus | string, isOverdue = false) {
       dot: "bg-success"
     };
   }
-  if (status === "REJECTED" || status === "DUPLICATE") {
-    return {
-      bg: "bg-slate-100 dark:bg-slate-800",
-      text: "text-slate-600 dark:text-slate-300",
-      dot: "bg-slate-400"
-    };
-  }
   return {
-    bg: "bg-blue-50 dark:bg-blue-950/25",
-    text: "text-slate-700 dark:text-slate-200",
+    bg: "bg-slate-100 dark:bg-slate-800",
+    text: "text-slate-600 dark:text-slate-300",
     dot: "bg-slate-400"
   };
 }

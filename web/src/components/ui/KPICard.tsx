@@ -1,48 +1,44 @@
-import { ArrowDownRight, ArrowUpRight, LucideIcon } from "lucide-react";
+import { LucideIcon } from "lucide-react";
 
 import { Card } from "./Card";
+
+type Tone = "primary" | "danger" | "warning" | "success" | "info";
+
+const toneClasses: Record<Tone, string> = {
+  primary: "bg-primarySoft text-primary",
+  danger: "bg-red-50 text-danger dark:bg-red-950/35",
+  warning: "bg-amber-50 text-warning dark:bg-amber-950/35",
+  success: "bg-emerald-50 text-success dark:bg-emerald-950/35",
+  info: "bg-blue-50 text-info dark:bg-blue-950/35"
+};
 
 export function KPICard({
   label,
   value,
-  delta,
-  trend = "up",
+  hint,
+  tone = "primary",
   icon: Icon
 }: {
   label: string;
   value: string | number;
-  delta?: string;
-  trend?: "up" | "down";
+  hint?: string;
+  tone?: Tone;
   icon?: LucideIcon;
 }) {
-  const TrendIcon = trend === "up" ? ArrowUpRight : ArrowDownRight;
   return (
     <Card className="p-5">
       <div className="flex items-start justify-between gap-3">
-        <div>
+        <div className="min-w-0">
           <p className="text-sm text-mutedText">{label}</p>
-          <p className="mt-2 text-[28px] font-semibold leading-none tracking-normal text-foreground">
-            {value}
-          </p>
+          <p className="mt-2 text-[32px] font-semibold leading-none tracking-tight text-foreground">{value}</p>
+          {hint ? <p className="mt-2 text-xs text-mutedText">{hint}</p> : null}
         </div>
         {Icon ? (
-          <div className="grid h-10 w-10 place-items-center rounded-control bg-primarySoft text-primary">
+          <div className={`grid h-10 w-10 shrink-0 place-items-center rounded-control ${toneClasses[tone]}`}>
             <Icon className="h-5 w-5 stroke-[1.6]" />
           </div>
         ) : null}
       </div>
-      {delta ? (
-        <span
-          className={`mt-4 inline-flex items-center gap-1 rounded-chip px-2.5 py-1 text-xs font-medium ${
-            trend === "up"
-              ? "bg-emerald-50 text-emerald-700 dark:bg-emerald-950/35 dark:text-emerald-200"
-              : "bg-red-50 text-red-700 dark:bg-red-950/35 dark:text-red-200"
-          }`}
-        >
-          <TrendIcon className="h-3.5 w-3.5 stroke-[1.7]" />
-          {delta}
-        </span>
-      ) : null}
     </Card>
   );
 }

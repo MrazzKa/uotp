@@ -6,8 +6,10 @@ import { Navigate, Route, Routes } from "react-router-dom";
 import { AppShell } from "./components/layout/AppShell";
 import { fetchMe } from "./lib/api";
 import { LoginPage } from "./pages/LoginPage";
+import { AdminPage } from "./pages/admin/AdminPage";
 import { RoleDashboard } from "./pages/dashboards/RoleDashboard";
 import { IssuesPage } from "./pages/issues/IssuesPage";
+import { ProfilePage } from "./pages/profile/ProfilePage";
 import { useAuthStore } from "./store/auth";
 import { useThemeStore } from "./theme/store";
 
@@ -44,6 +46,8 @@ export default function App() {
       <Routes>
         <Route path="/" element={<RoleDashboard role={user.role.code} />} />
         <Route path="/issues/*" element={<IssuesPage />} />
+        <Route path="/admin" element={user.role.code === "ADMIN" ? <AdminPage /> : <Navigate to="/" replace />} />
+        <Route path="/profile" element={<ProfilePage />} />
         <Route
           path="/map"
           element={

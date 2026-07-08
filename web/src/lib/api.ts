@@ -7,6 +7,8 @@ import type {
   Issue,
   IssueListResponse,
   NotificationListResponse,
+  OkrugDetail,
+  Role,
   TokenPair,
   User
 } from "../types";
@@ -89,23 +91,72 @@ export async function fetchMe() {
   return data;
 }
 
+export async function changePassword(currentPassword: string, newPassword: string) {
+  await api.post("/auth/change-password", { current_password: currentPassword, new_password: newPassword });
+}
+
 export async function fetchCatalogs() {
-  const [categories, departments, districts, users] = await Promise.all([
+  const [categories, departments, districts, spheres, users] = await Promise.all([
     api.get<CatalogItem[]>("/categories"),
     api.get<CatalogItem[]>("/departments"),
     api.get<CatalogItem[]>("/districts"),
+    api.get<CatalogItem[]>("/spheres"),
     api.get<User[]>("/users")
   ]);
   return {
     categories: categories.data,
     departments: departments.data,
     districts: districts.data,
+    spheres: spheres.data,
     users: users.data
   };
 }
 
 export async function fetchDashboardSummary() {
   const { data } = await api.get<DashboardSummary>("/dashboard/summary");
+  return data;
+}
+
+export async function fetchRoles() {
+  const { data } = await api.get<Role[]>("/roles");
+  return data;
+}
+
+export async function fetchOkrugDetail(id: string) {
+  const { data } = await api.get<OkrugDetail>(`/dashboard/okrug/${id}`);
+  return data;
+}
+
+export async function createSphere(payload: Record<string, unknown>) {
+  const { data } = await api.post<CatalogItem>("/spheres", payload);
+  return data;
+}
+
+export async function updateSphere(id: string, payload: Record<string, unknown>) {
+  const { data } = await api.patch<CatalogItem>(`/spheres/${id}`, payload);
+  return data;
+}
+
+export async function deleteSphere(id: string) {
+  await api.delete(`/spheres/${id}`);
+}
+
+export async function createDepartment(payload: Record<string, unknown>) {
+  const { data } = await api.post<CatalogItem>("/departments", payload);
+  return data;
+}
+
+export async function deleteDepartment(id: string) {
+  await api.delete(`/departments/${id}`);
+}
+
+export async function createUser(payload: Record<string, unknown>) {
+  const { data } = await api.post<User>("/users", payload);
+  return data;
+}
+
+export async function updateUser(id: string, payload: Record<string, unknown>) {
+  const { data } = await api.patch<User>(`/users/${id}`, payload);
   return data;
 }
 
@@ -144,8 +195,18 @@ export async function createIssue(payload: Record<string, unknown>) {
   return data;
 }
 
-export async function qualifyIssue(id: string, payload: Record<string, unknown>) {
-  const { data } = await api.post<Issue>(`/issues/${id}/qualify`, payload);
+export async function submitIssue(id: string, report?: string) {
+  const { data } = await api.post<Issue>(`/issues/${id}/submit`, { report });
+  return data;
+}
+
+export async function updateIssue(id: string, payload: Record<string, unknown>) {
+  const { data } = await api.patch<Issue>(`/issues/${id}`, payload);
+  return data;
+}
+
+export async function setPersonalControl(id: string, on: boolean, importance = "NORMAL") {
+  const { data } = await api.post<Issue>(`/issues/${id}/personal-control`, { on, importance });
   return data;
 }
 
@@ -154,8 +215,8 @@ export async function assignIssue(id: string, payload: Record<string, unknown>) 
   return data;
 }
 
-export async function transitionIssue(id: string, status: string) {
-  const { data } = await api.post<Issue>(`/issues/${id}/transition`, { status });
+export async function transitionIssue(id: string, status: string, payload: Record<string, unknown> = {}) {
+  const { data } = await api.post<Issue>(`/issues/${id}/transition`, { status, payload });
   return data;
 }
 

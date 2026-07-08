@@ -12,16 +12,13 @@ import { chartPalette } from "../../lib/design";
 import type { IssueStatus } from "../../types";
 
 const statuses: IssueStatus[] = [
+  "DRAFT",
   "NEW",
-  "QUALIFICATION",
   "ASSIGNED",
-  "ACCEPTED",
-  "IN_PROGRESS",
-  "COMPLETED",
-  "INSPECTION",
+  "REVIEW_CONTROLLER",
+  "REVIEW_AUTHOR",
   "CLOSED",
-  "REJECTED",
-  "RETURNED"
+  "ON_HOLD"
 ];
 
 const trendData = [
@@ -62,9 +59,9 @@ export function StyleguidePage() {
       </Panel>
 
       <section className="grid gap-4 md:grid-cols-4">
-        <KPICard label={t("issues")} value="1,248" delta="+12%" icon={ClipboardList} />
-        <KPICard label={t("people")} value="86" delta="+4%" icon={Users} />
-        <KPICard label={t("checks")} value="94%" delta="-2%" trend="down" icon={Activity} />
+        <KPICard label={t("issues")} value="1,248" hint="+12% за месяц" icon={ClipboardList} />
+        <KPICard label={t("people")} value="86" hint="+4% за месяц" tone="info" icon={Users} />
+        <KPICard label={t("checks")} value="94%" hint="-2% за месяц" tone="warning" icon={Activity} />
         <Card>
           <p className="text-sm text-mutedText">{t("chartPalette")}</p>
           <div className="mt-4 flex gap-2">

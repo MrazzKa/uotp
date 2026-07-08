@@ -23,8 +23,7 @@ const DEFAULT_BBOX = "69.05,54.80,69.25,54.94";
 const TILE_STYLE = import.meta.env.VITE_MAP_STYLE_URL ?? "https://tiles.openfreemap.org/styles/liberty";
 
 const ALL_STATUSES: IssueStatus[] = [
-  "NEW", "QUALIFICATION", "ASSIGNED", "ACCEPTED", "IN_PROGRESS",
-  "COMPLETED", "INSPECTION", "CLOSED", "REJECTED", "RETURNED", "DUPLICATE"
+  "NEW", "ASSIGNED", "REVIEW_CONTROLLER", "REVIEW_AUTHOR", "CLOSED", "ON_HOLD"
 ];
 
 type Filters = {

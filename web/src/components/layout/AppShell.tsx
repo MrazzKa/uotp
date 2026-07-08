@@ -10,7 +10,9 @@ import {
   Moon,
   Palette,
   Search,
-  Sun
+  Settings,
+  Sun,
+  User as UserIcon
 } from "lucide-react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { ReactNode, useMemo, useState } from "react";
@@ -35,18 +37,22 @@ type NavItem = {
   labelKey: string;
   href: string;
   icon: typeof LayoutDashboard;
+  adminOnly?: boolean;
 };
 
 const navItems: NavItem[] = [
   { labelKey: "dashboard", href: "/", icon: LayoutDashboard },
   { labelKey: "issues", href: "/issues", icon: ClipboardList },
   { labelKey: "map", href: "/map", icon: Map },
-  { labelKey: "styleguide", href: "/styleguide", icon: Palette }
+  { labelKey: "adminNav", href: "/admin", icon: Settings, adminOnly: true },
+  { labelKey: "styleguide", href: "/styleguide", icon: Palette, adminOnly: true }
 ];
 
 function pageTitle(pathname: string) {
   if (pathname.startsWith("/issues")) return "issues";
   if (pathname.startsWith("/map")) return "map";
+  if (pathname.startsWith("/admin")) return "adminNav";
+  if (pathname.startsWith("/profile")) return "profileTab";
   if (pathname.startsWith("/styleguide")) return "styleguide";
   return "dashboard";
 }
@@ -58,7 +64,10 @@ export function AppShell({ children }: { children: ReactNode }) {
   const [collapsed, setCollapsed] = useState(localStorage.getItem("uotp.sidebar") === "collapsed");
   const active = useLocation().pathname;
   const titleKey = pageTitle(active);
-  const visibleNav = useMemo(() => navItems, []);
+  const visibleNav = useMemo(
+    () => navItems.filter((item) => !item.adminOnly || user?.role.code === "ADMIN"),
+    [user?.role.code]
+  );
 
   function toggleSidebar() {
     const next = !collapsed;
@@ -125,6 +134,13 @@ export function AppShell({ children }: { children: ReactNode }) {
                 {i18n.language === "ru" ? "RU" : "KK"}
               </Button>
               <NotificationBell />
+              <Link
+                to="/profile"
+                className="hidden h-10 items-center gap-2 rounded-chip border border-border bg-surface px-3 text-sm shadow-base transition hover:bg-surface2 sm:flex"
+              >
+                <UserIcon className="h-4 w-4 stroke-[1.7]" />
+                <span className="max-w-[120px] truncate">{user?.full_name?.split(" ")[0]}</span>
+              </Link>
               <Tooltip content={t("theme")}>
                 <Button type="button" variant="secondary" size="icon" onClick={toggleTheme}>
                   {theme === "light" ? <Moon /> : <Sun />}

@@ -1,4 +1,17 @@
-export type RoleCode = "ADMIN" | "DISPATCHER" | "EXECUTOR" | "AKIM" | "INSPECTOR";
+export type RoleCode =
+  | "ADMIN"
+  | "AKIM"
+  | "DEPUTY"
+  | "APPARAT"
+  | "DEPT_HEAD"
+  | "AKIM_SO"
+  | "SPECIALIST"
+  | "OPERATOR"
+  | "CONTRACTOR";
+
+export type UserMini = { id: string; full_name: string; email: string | null };
+
+export type Role = { id: string; code: string; name_ru: string; name_kk: string };
 
 export type User = {
   id: string;
@@ -6,6 +19,7 @@ export type User = {
   phone: string | null;
   email: string | null;
   language: string;
+  position_title?: string | null;
   role: { id: string; code: RoleCode; name_ru: string; name_kk: string; permissions: Record<string, unknown> };
   tenant: { id: string; code: string; name_ru: string; name_kk: string; timezone: string; locale_default: string };
 };
@@ -22,25 +36,19 @@ export type CatalogItem = {
   name_ru: string;
   name_kk: string;
   parent_id?: string | null;
-  default_priority?: string;
-  default_department_id?: string | null;
   icon?: string | null;
   color?: string | null;
   type?: string;
 };
 
 export type IssueStatus =
+  | "DRAFT"
   | "NEW"
-  | "QUALIFICATION"
   | "ASSIGNED"
-  | "ACCEPTED"
-  | "IN_PROGRESS"
-  | "COMPLETED"
-  | "INSPECTION"
+  | "REVIEW_CONTROLLER"
+  | "REVIEW_AUTHOR"
   | "CLOSED"
-  | "REJECTED"
-  | "RETURNED"
-  | "DUPLICATE";
+  | "ON_HOLD";
 
 export type Issue = {
   id: string;
@@ -48,23 +56,22 @@ export type Issue = {
   title: string;
   description?: string;
   source: string;
+  task_type: string;
   status: IssueStatus;
   priority: string;
+  importance: string;
   category: CatalogItem | null;
+  sphere: CatalogItem | null;
   district: CatalogItem | null;
-  department: CatalogItem | null;
-  assigned_to: { id: string; full_name: string; email: string | null } | null;
-  created_by?: { id: string; full_name: string; email: string | null };
+  assigned_to: UserMini | null;
+  controller: UserMini | null;
+  created_by?: UserMini;
   created_at: string;
-  accepted_at?: string | null;
-  on_site_at?: string | null;
-  completed_at?: string | null;
+  due_at: string | null;
   closed_at?: string | null;
-  reaction_due_at: string | null;
-  sla_due_at: string | null;
-  inspection_due_at: string | null;
   is_overdue: boolean;
-  sla_paused_at: string | null;
+  on_personal_control?: boolean;
+  reopen_count?: number;
   address?: string | null;
   latitude?: string | null;
   longitude?: string | null;
@@ -102,7 +109,7 @@ export type DashboardSummary = {
   counts: {
     in_progress: number;
     overdue: number;
-    inspection: number;
+    on_review: number;
     closed_today: number;
     new: number;
   };
@@ -110,6 +117,7 @@ export type DashboardSummary = {
   per_day: Array<{ date: string; count: number }>;
   by_status: Array<{ status: IssueStatus | string; count: number }>;
   hot_zones: Array<{ district_id: string | null; name: string; count: number }>;
+  okrug_monitoring: Array<{ id: string | null; name: string; total: number; done: number; pct: number }>;
   recent_events: Array<{
     issue_id: string;
     public_number: string;
@@ -118,6 +126,9 @@ export type DashboardSummary = {
     created_at: string;
   }>;
 };
+
+export type OkrugBreakdown = { name: string; total: number; done: number; pct: number };
+export type OkrugDetail = { name: string; by_user: OkrugBreakdown[]; by_sphere: OkrugBreakdown[] };
 
 export type NotificationItem = {
   id: string;
