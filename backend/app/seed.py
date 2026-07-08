@@ -6,6 +6,8 @@
 Снести демо-данные: python -m app.seed wipe.
 """
 import asyncio
+import os
+import secrets
 import sys
 from datetime import UTC, datetime, timedelta
 
@@ -337,8 +339,44 @@ async def wipe() -> None:
     print(f"Demo tenant '{TENANT_CODE}' wiped.")
 
 
+async def bootstrap() -> None:
+    """Пустой безопасный старт: тенант + роли + один админ. Без демо-данных.
+
+    Пароль берётся из переменной ADMIN_PASSWORD, иначе генерируется и печатается.
+    """
+    if settings.app_env not in {"dev", "demo"}:
+        raise SystemExit("Bootstrap is allowed only when APP_ENV is dev or demo.")
+    password = os.environ.get("ADMIN_PASSWORD") or secrets.token_urlsafe(12)
+    async with AsyncSessionLocal() as session:
+        tenant = await get_or_create_tenant(session)
+        roles: dict[str, Role] = {}
+        for code, ru, kk in ROLES:
+            role = (
+                await session.execute(select(Role).where(Role.tenant_id == tenant.id, Role.code == code))
+            ).scalar_one_or_none()
+            if role is None:
+                role = Role(tenant_id=tenant.id, code=code, name_ru=ru, name_kk=kk, permissions={}, is_system=True)
+                session.add(role)
+                await session.flush()
+            roles[code] = role
+        admin = (await session.execute(select(User).where(User.email == "admin@uotp.local"))).scalar_one_or_none()
+        if admin is None:
+            admin = User(
+                tenant_id=tenant.id, full_name="Администратор", email="admin@uotp.local",
+                password_hash=hash_password(password), role_id=roles["ADMIN"].id, language="ru",
+                position_title="Администратор", controls_all_spheres=True,
+            )
+            session.add(admin)
+        else:
+            admin.password_hash = hash_password(password)
+        await session.commit()
+    print(f"Bootstrap ready. Admin login: admin@uotp.local  password: {password}")
+
+
 if __name__ == "__main__":
     if len(sys.argv) > 1 and sys.argv[1] == "wipe":
         asyncio.run(wipe())
+    elif len(sys.argv) > 1 and sys.argv[1] == "bootstrap":
+        asyncio.run(bootstrap())
     else:
         asyncio.run(seed())

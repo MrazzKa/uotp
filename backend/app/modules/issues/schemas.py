@@ -71,6 +71,7 @@ class UserMini(BaseModel):
     id: UUID
     full_name: str
     email: str | None
+    organization: str | None = None
 
     model_config = {"from_attributes": True}
 

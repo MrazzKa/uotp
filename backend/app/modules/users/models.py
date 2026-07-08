@@ -25,3 +25,15 @@ class User(TenantScopedMixin, Base):
 
     tenant = relationship("Tenant", back_populates="users", foreign_keys="User.tenant_id", lazy="selectin")
     role = relationship("Role", back_populates="users", lazy="selectin")
+    department = relationship(
+        "Department",
+        primaryjoin="User.department_id == Department.id",
+        foreign_keys="User.department_id",
+        lazy="selectin",
+        viewonly=True,
+    )
+
+    @property
+    def organization(self) -> str | None:
+        """Название организации/подразделения исполнителя — куда ушло поручение."""
+        return self.department.name_ru if self.department is not None else None
