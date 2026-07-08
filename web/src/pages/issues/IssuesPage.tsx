@@ -231,7 +231,10 @@ function IssueList({ onOpen, onNew }: { onOpen: (id: string) => void; onNew: () 
                 {issue.assigned_to ? (
                   <span className="inline-flex items-center gap-2">
                     <AvatarInitials name={issue.assigned_to.full_name} />
-                    {issue.assigned_to.full_name}
+                    <span>
+                      {issue.assigned_to.full_name}
+                      {issue.assigned_to.organization ? <span className="block text-xs text-mutedText">{issue.assigned_to.organization}</span> : null}
+                    </span>
                   </span>
                 ) : null}
               </TableCell>
@@ -431,6 +434,7 @@ function IssueSummary({ issue, language }: { issue: Issue; language: string }) {
       {issue.description && issue.description !== issue.title ? <p className="mt-3 text-mutedText">{issue.description}</p> : null}
       <dl className="mt-4 grid gap-3 text-sm sm:grid-cols-2">
         <Meta label={t("assignee")} value={issue.assigned_to?.full_name} />
+        <Meta label={t("organization")} value={issue.assigned_to?.organization} />
         <Meta label={t("controller")} value={issue.controller?.full_name} />
         <Meta label={t("address")} value={issue.address} />
         <Meta label={t("created")} value={new Date(issue.created_at).toLocaleString()} />

@@ -18,7 +18,7 @@ export type IssueStatus =
   | "CLOSED"
   | "ON_HOLD";
 
-export type UserMini = { id: string; full_name: string };
+export type UserMini = { id: string; full_name: string; organization?: string | null };
 
 export type User = {
   id: string;

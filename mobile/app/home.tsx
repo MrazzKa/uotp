@@ -643,6 +643,7 @@ function IssueDetail({ issueId, onBack }: { issueId: string; onBack: () => void 
             {data.description && data.description !== data.title ? <Text style={[styles.body, { color: colors.text }]}>{data.description}</Text> : null}
             <View style={styles.metaGrid}>
               <MetaRow label={t("assignee")} value={data.assigned_to?.full_name} />
+              <MetaRow label={t("organization")} value={data.assigned_to?.organization} />
               <MetaRow label={t("controller")} value={data.controller?.full_name} />
             </View>
           </View>

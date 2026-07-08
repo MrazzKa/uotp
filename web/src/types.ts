@@ -9,7 +9,7 @@ export type RoleCode =
   | "OPERATOR"
   | "CONTRACTOR";
 
-export type UserMini = { id: string; full_name: string; email: string | null };
+export type UserMini = { id: string; full_name: string; email: string | null; organization?: string | null };
 
 export type Role = { id: string; code: string; name_ru: string; name_kk: string };
 
