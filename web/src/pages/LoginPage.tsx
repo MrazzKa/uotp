@@ -8,21 +8,10 @@ import { Card } from "../components/ui/Card";
 import { Input } from "../components/ui/Field";
 import { fetchMe, login } from "../lib/api";
 
-const DEMO_ACCOUNTS = [
-  { label: "Аким района", email: "akim@uotp.local" },
-  { label: "Рук. аппарата", email: "apparat@uotp.local" },
-  { label: "Оператор", email: "operator@uotp.local" },
-  { label: "Рук. отдела ЖКХ", email: "head_gkh@uotp.local" },
-  { label: "Специалист", email: "spec_gkh@uotp.local" },
-  { label: "Аким с/о", email: "so_beskol@uotp.local" },
-  { label: "Подрядчик", email: "con_clean@uotp.local" },
-  { label: "Админ", email: "admin@uotp.local" }
-];
-
 export function LoginPage() {
   const { t } = useTranslation();
-  const [identifier, setIdentifier] = useState("akim@uotp.local");
-  const [password, setPassword] = useState("demo123");
+  const [identifier, setIdentifier] = useState("");
+  const [password, setPassword] = useState("");
   const mutation = useMutation({
     mutationFn: async () => {
       await login(identifier, password);
@@ -46,34 +35,17 @@ export function LoginPage() {
         </div>
         <label className="mb-3 block text-sm">
           <span className="mb-1 block">{t("identifier")}</span>
-          <Input value={identifier} onChange={(event) => setIdentifier(event.target.value)} />
+          <Input value={identifier} autoComplete="username" onChange={(event) => setIdentifier(event.target.value)} />
         </label>
         <label className="mb-5 block text-sm">
           <span className="mb-1 block">{t("password")}</span>
-          <Input type="password" value={password} onChange={(event) => setPassword(event.target.value)} />
+          <Input type="password" autoComplete="current-password" value={password} onChange={(event) => setPassword(event.target.value)} />
         </label>
-        <Button type="submit" disabled={mutation.isPending} className="w-full">
+        <Button type="submit" disabled={mutation.isPending || !identifier || !password} className="w-full">
           <LogIn size={18} />
           {t("signIn")}
         </Button>
         {mutation.isError ? <p className="mt-3 text-sm text-red-500">{t("loginFailed")}</p> : null}
-        <div className="mt-5 border-t border-border pt-4">
-          <p className="mb-2 text-xs text-mutedText">Демо-вход (пароль demo123)</p>
-          <div className="flex flex-wrap gap-1.5">
-            {DEMO_ACCOUNTS.map((account) => (
-              <button
-                key={account.email}
-                type="button"
-                onClick={() => setIdentifier(account.email)}
-                className={`rounded-chip border px-2.5 py-1 text-xs transition ${
-                  identifier === account.email ? "border-primary bg-primarySoft text-primary" : "border-border text-mutedText hover:bg-surface2"
-                }`}
-              >
-                {account.label}
-              </button>
-            ))}
-          </div>
-        </div>
       </Card>
     </main>
   );
