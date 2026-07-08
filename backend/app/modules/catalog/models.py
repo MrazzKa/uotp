@@ -61,3 +61,4 @@ class Sphere(TenantScopedMixin, Base):
     name_kk: Mapped[str] = mapped_column(String(255), nullable=False)
     icon: Mapped[str | None] = mapped_column(String(64))
     color: Mapped[str | None] = mapped_column(String(32))
+    controller_id: Mapped[uuid.UUID | None] = mapped_column(UUID(as_uuid=True), ForeignKey("users.id"))

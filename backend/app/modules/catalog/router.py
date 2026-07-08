@@ -23,6 +23,7 @@ class SphereRead(BaseModel):
     name_kk: str
     icon: str | None = None
     color: str | None = None
+    controller_id: UUID | None = None
 
     model_config = {"from_attributes": True}
 
@@ -33,6 +34,7 @@ class SphereWrite(BaseModel):
     name_kk: str
     icon: str | None = None
     color: str | None = None
+    controller_id: UUID | None = None
 
 
 class SphereUpdate(BaseModel):
@@ -40,6 +42,7 @@ class SphereUpdate(BaseModel):
     name_kk: str | None = None
     icon: str | None = None
     color: str | None = None
+    controller_id: UUID | None = None
 
 
 class DepartmentWrite(BaseModel):

@@ -9,6 +9,7 @@ from sqlalchemy.dialects.postgresql import insert
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.modules.audit.service import log_audit
+from app.modules.catalog.models import Sphere
 from app.modules.issues.models import (
     ExifData,
     Issue,
@@ -102,6 +103,15 @@ def task_roles_for(issue: Issue, user: User) -> set[str]:
 
 
 def can_user_transition(issue: Issue, user: User, to_status: str) -> bool:
+    # Личный контроль: снять с контроля задачу, взятую на личный контроль, может только тот,
+    # кто её отметил (обычно аким). Остальные задачи снимают контролёр и автор как обычно.
+    if to_status in (IssueStatus.CLOSED, IssueStatus.CLOSED.value):
+        marks = getattr(issue, "personal_marks", None) or []
+        if marks:
+            owner_ids = {mark.user_id for mark in marks}
+            is_admin = bool(user.role and user.role.code == "ADMIN")
+            if user.id not in owner_ids and not is_admin:
+                return False
     return any(can_transition(role, issue.status, to_status) for role in task_roles_for(issue, user))
 
 
@@ -116,9 +126,12 @@ def require_user_transition(issue: Issue, user: User, to_status: str) -> None:
 async def find_controller_for_sphere(
     session: AsyncSession, tenant_id: uuid.UUID, sphere_id: uuid.UUID | None
 ) -> uuid.UUID | None:
-    """Кандидат-контролёр по сфере: сначала куратор именно этой сферы, затем «контролирует все»."""
+    """Контролёр по сфере: сначала закреплённый за самой сферой, затем «контролирует все»."""
     if sphere_id is None:
         return None
+    sphere = await session.get(Sphere, sphere_id)
+    if sphere is not None and sphere.controller_id is not None:
+        return sphere.controller_id
     result = await session.execute(
         select(User)
         .where(

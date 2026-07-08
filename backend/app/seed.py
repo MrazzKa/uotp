@@ -9,11 +9,10 @@ import asyncio
 import sys
 from datetime import UTC, datetime, timedelta
 
-from sqlalchemy import delete, select
+from sqlalchemy import delete, select, update
 
 from app.config import settings
 from app.db import AsyncSessionLocal
-from app.modules.audit.models import AuditLog
 from app.modules.catalog.models import Category, Department, District, Sphere
 from app.modules.issues.models import (
     ExifData,
@@ -295,6 +294,19 @@ async def seed() -> None:
         roles, spheres, departments = await seed_reference(session, tenant)
         users = await seed_users(session, tenant, roles, spheres, departments)
         await session.flush()
+        # Закрепляем контролёров за сферами. Один контролёр может вести несколько сфер.
+        sphere_controllers = {
+            "gkh": "head_gkh", "edu": "head_edu", "agro": "head_agro", "vet": "head_agro",
+            "social": "deputy_social", "econ": "deputy_apk", "business": "deputy_apk",
+            "build": "deputy_oper", "emergency": "deputy_oper",
+            "apparatus": "apparat", "culture": "apparat", "inpol": "apparat",
+        }
+        for sphere_code, user_key in sphere_controllers.items():
+            sphere = spheres.get(sphere_code)
+            controller = users.get(user_key)
+            if sphere is not None and controller is not None:
+                sphere.controller_id = controller.id
+        await session.flush()
         await seed_tasks(session, tenant, spheres, users)
         await session.commit()
     print(f"Demo tenant '{TENANT_CODE}' (Кызылжарский район): roles, spheres, org units, users and tasks are ready.")
@@ -310,9 +322,13 @@ async def wipe() -> None:
             print("Nothing to wipe.")
             return
         tid = tenant.id
+        # Сфера ссылается на пользователя (контролёр), а пользователь на сферу: разрываем цикл.
+        await session.execute(update(Sphere).where(Sphere.tenant_id == tid).values(controller_id=None))
+        # audit_log НЕ трогаем: он append-only (защищён триггером) и хранится постоянно.
+        # Полный переход демо -> реальные данные делается сбросом схемы (см. docs/DEPLOY.md).
         for model in (
             ExifData, IssueAttachment, IssueComment, Notification, IssuePersonalMark,
-            IssueAssignee, IssueHistory, AuditLog, DeviceToken, Issue,
+            IssueAssignee, IssueHistory, DeviceToken, Issue,
             SlaRule, Category, District, IssueNumberCounter,
             User, Department, Sphere, Role, Tenant,
         ):
