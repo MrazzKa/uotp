@@ -51,14 +51,14 @@ export type ThemeColors = typeof palettes.light;
 
 export function statusColor(status: string, isOverdue = false, colors: ThemeColors = palettes.light) {
   if (isOverdue) return { bg: colors.danger, soft: colors.danger, text: "#FFFFFF" };
-  if (["QUALIFICATION", "ASSIGNED", "ACCEPTED", "IN_PROGRESS"].includes(status)) {
+  if (["NEW", "ASSIGNED"].includes(status)) {
     return { bg: colors.info, soft: colors.primarySoft, text: colors.primary };
   }
-  if (["COMPLETED", "INSPECTION", "RETURNED"].includes(status)) {
+  if (["REVIEW_CONTROLLER", "REVIEW_AUTHOR"].includes(status)) {
     return { bg: colors.warning, soft: colors.surface2, text: colors.warning };
   }
   if (status === "CLOSED") return { bg: colors.success, soft: colors.surface2, text: colors.success };
-  if (status === "REJECTED" || status === "DUPLICATE") {
+  if (status === "DRAFT" || status === "ON_HOLD") {
     return { bg: colors.mutedText, soft: colors.surface2, text: colors.mutedText };
   }
   return { bg: colors.info, soft: colors.primarySoft, text: colors.text };

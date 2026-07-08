@@ -1,17 +1,24 @@
-export type RoleCode = "ADMIN" | "DISPATCHER" | "EXECUTOR" | "AKIM" | "INSPECTOR";
+export type RoleCode =
+  | "ADMIN"
+  | "AKIM"
+  | "DEPUTY"
+  | "APPARAT"
+  | "DEPT_HEAD"
+  | "AKIM_SO"
+  | "SPECIALIST"
+  | "OPERATOR"
+  | "CONTRACTOR";
 
 export type IssueStatus =
+  | "DRAFT"
   | "NEW"
-  | "QUALIFICATION"
   | "ASSIGNED"
-  | "ACCEPTED"
-  | "IN_PROGRESS"
-  | "COMPLETED"
-  | "INSPECTION"
+  | "REVIEW_CONTROLLER"
+  | "REVIEW_AUTHOR"
   | "CLOSED"
-  | "REJECTED"
-  | "RETURNED"
-  | "DUPLICATE";
+  | "ON_HOLD";
+
+export type UserMini = { id: string; full_name: string };
 
 export type User = {
   id: string;
@@ -34,6 +41,8 @@ export type CatalogItem = {
   code?: string;
   name_ru: string;
   name_kk: string;
+  icon?: string | null;
+  color?: string | null;
   default_priority?: string | null;
 };
 
@@ -43,17 +52,21 @@ export type Issue = {
   title: string;
   description?: string;
   source: string;
+  task_type: string;
   status: IssueStatus;
   priority: string;
+  importance: string;
   category: CatalogItem | null;
+  sphere: CatalogItem | null;
   district: CatalogItem | null;
-  assigned_to: { id: string; full_name: string } | null;
+  assigned_to: UserMini | null;
+  controller: UserMini | null;
+  created_by?: UserMini;
   created_at: string;
-  reaction_due_at: string | null;
-  sla_due_at: string | null;
-  inspection_due_at: string | null;
+  due_at: string | null;
+  closed_at?: string | null;
   is_overdue: boolean;
-  sla_paused_at: string | null;
+  on_personal_control?: boolean;
   address?: string | null;
   latitude?: string | null;
   longitude?: string | null;
@@ -97,4 +110,20 @@ export type NotificationItem = {
 export type NotificationListResponse = {
   items: NotificationItem[];
   next_cursor: string | null;
+};
+
+export type VoiceDraft = {
+  transcript: string;
+  title: string;
+  importance: string;
+  sphere_id: string | null;
+  sphere_name: string | null;
+  executor_id: string | null;
+  executor_name: string | null;
+  due_at: string | null;
+};
+
+export type DashboardSummary = {
+  counts: { in_progress: number; overdue: number; on_review: number; closed_today: number; new: number };
+  okrug_monitoring: Array<{ name: string; total: number; done: number; pct: number }>;
 };

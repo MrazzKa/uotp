@@ -61,8 +61,13 @@ export default function LoginScreen() {
         />
         <Pressable disabled={mutation.isPending} style={[styles.primaryButton, { backgroundColor: colors.primary }]} onPress={() => mutation.mutate()}>
           <Ionicons name="log-in-outline" size={22} color="#FFFFFF" />
-          <Text style={styles.primaryText}>{t("signIn")}</Text>
+          <Text style={styles.primaryText}>{mutation.isPending ? "..." : t("signIn")}</Text>
         </Pressable>
+        {mutation.isError ? (
+          <Text style={{ color: colors.danger, fontFamily: "Inter_400Regular", fontSize: 13 }}>
+            {(mutation.error as Error)?.message ?? "error"}
+          </Text>
+        ) : null}
       </View>
     </View>
   );

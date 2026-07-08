@@ -2,7 +2,7 @@ import Constants from "expo-constants";
 import axios from "axios";
 
 import { useAuthStore } from "../store/auth";
-import type { CatalogItem, Issue, IssueListResponse, NotificationListResponse, TokenPair, User } from "../types";
+import type { CatalogItem, DashboardSummary, Issue, IssueListResponse, NotificationListResponse, TokenPair, User, VoiceDraft } from "../types";
 
 const apiUrl = (Constants.expoConfig?.extra?.apiUrl as string | undefined) ?? "http://localhost:8000/api/v1";
 
@@ -44,6 +44,10 @@ export async function fetchMe() {
   return data;
 }
 
+export async function changePassword(currentPassword: string, newPassword: string) {
+  await api.post("/auth/change-password", { current_password: currentPassword, new_password: newPassword });
+}
+
 export async function logout() {
   const store = useAuthStore.getState();
   const refreshToken = store.refreshToken;
@@ -63,8 +67,23 @@ export async function fetchCatalogs() {
   return data;
 }
 
-export async function fetchIssues() {
-  const { data } = await api.get<IssueListResponse>("/issues");
+export async function fetchSpheres() {
+  const { data } = await api.get<CatalogItem[]>("/spheres");
+  return data;
+}
+
+export async function fetchUsers() {
+  const { data } = await api.get<User[]>("/users");
+  return data;
+}
+
+export async function fetchDashboardSummary() {
+  const { data } = await api.get<DashboardSummary>("/dashboard/summary");
+  return data;
+}
+
+export async function fetchIssues(params: Record<string, string | undefined> = {}) {
+  const { data } = await api.get<IssueListResponse>("/issues", { params });
   return data.items;
 }
 
@@ -119,6 +138,30 @@ export async function uploadIssuePhoto(
   await api.post(`/issues/${issueId}/attachments`, form, {
     headers: { "Content-Type": "multipart/form-data" }
   });
+}
+
+export async function submitIssue(id: string, report?: string) {
+  const { data } = await api.post<Issue>(`/issues/${id}/submit`, { report });
+  return data;
+}
+
+export async function updateIssue(id: string, payload: Record<string, unknown>) {
+  const { data } = await api.patch<Issue>(`/issues/${id}`, payload);
+  return data;
+}
+
+export async function parseVoice(uri: string) {
+  const form = new FormData();
+  form.append("file", { uri, name: "voice.m4a", type: "audio/m4a" } as unknown as Blob);
+  const { data } = await api.post<VoiceDraft>("/voice/parse", form, {
+    headers: { "Content-Type": "multipart/form-data" }
+  });
+  return data;
+}
+
+export async function setPersonalControl(id: string, on: boolean, importance = "NORMAL") {
+  const { data } = await api.post<Issue>(`/issues/${id}/personal-control`, { on, importance });
+  return data;
 }
 
 export async function transitionIssue(id: string, status: string) {
