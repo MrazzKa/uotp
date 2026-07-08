@@ -33,6 +33,14 @@ MESSAGES: dict[str, dict[str, tuple[str, str]]] = {
         "ru": ("Новый комментарий {number}", "В задаче появился новый комментарий: {title}"),
         "kk": ("Жаңа пікір {number}", "Тапсырмада жаңа пікір пайда болды: {title}"),
     },
+    "issue_to_author": {
+        "ru": ("Задача на вашем решении {number}", "Проверена контролёром, ждёт вашего решения: {title}"),
+        "kk": ("Тапсырма сіздің шешіміңізде {number}", "Бақылаушы тексерді, шешіміңізді күтеді: {title}"),
+    },
+    "issue_closed": {
+        "ru": ("Задача снята с контроля {number}", "Задача выполнена и снята с контроля: {title}"),
+        "kk": ("Тапсырма бақылаудан алынды {number}", "Тапсырма орындалып, бақылаудан алынды: {title}"),
+    },
 }
 
 
@@ -143,13 +151,54 @@ async def notify_issue_completed(session: AsyncSession, issue: Issue) -> None:
         )
 
 
+async def notify_issue_submitted(session: AsyncSession, issue: Issue) -> None:
+    """«Сделал»: уведомляем контролёра, а если его нет — автора задачи."""
+    recipient = None
+    if issue.controller_id is not None:
+        recipient = await session.get(User, issue.controller_id)
+    if recipient is None:
+        recipient = issue.created_by
+        if recipient is None and issue.created_by_id is not None:
+            recipient = await session.get(User, issue.created_by_id)
+    if recipient is not None:
+        await create_notification(
+            session, recipient=recipient, notification_type="issue_completed", issue=issue
+        )
+
+
+async def notify_issue_to_author(session: AsyncSession, issue: Issue) -> None:
+    """Контролёр передал задачу автору для решения."""
+    recipient = issue.created_by
+    if recipient is None and issue.created_by_id is not None:
+        recipient = await session.get(User, issue.created_by_id)
+    if recipient is not None:
+        await create_notification(
+            session, recipient=recipient, notification_type="issue_to_author", issue=issue
+        )
+
+
+async def notify_issue_closed(session: AsyncSession, issue: Issue) -> None:
+    """Задача снята с контроля: сообщаем исполнителю и автору."""
+    recipients: list[User] = []
+    for user_id in (issue.assigned_to_id, issue.created_by_id):
+        if user_id is not None:
+            found = await session.get(User, user_id)
+            if found is not None:
+                recipients.append(found)
+    for recipient in unique_recipients(recipients):
+        await create_notification(
+            session, recipient=recipient, notification_type="issue_closed", issue=issue
+        )
+
+
 async def notify_issue_overdue(session: AsyncSession, issue: Issue) -> None:
-    recipients = await users_with_roles(session, issue.tenant_id, {"DISPATCHER"})
-    assignee = issue.assigned_to
-    if assignee is None and issue.assigned_to_id is not None:
-        assignee = await session.get(User, issue.assigned_to_id)
-    if assignee is not None:
-        recipients.append(assignee)
+    """Эскалация просрочки: исполнителю, контролёру и руководителю аппарата (над-контроль)."""
+    recipients = await users_with_roles(session, issue.tenant_id, {"APPARAT"})
+    for user_id in (issue.assigned_to_id, issue.controller_id):
+        if user_id is not None:
+            found = await session.get(User, user_id)
+            if found is not None:
+                recipients.append(found)
     for recipient in unique_recipients(recipients):
         await create_notification(
             session, recipient=recipient, notification_type="issue_overdue", issue=issue

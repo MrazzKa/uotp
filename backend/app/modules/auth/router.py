@@ -1,6 +1,6 @@
 from typing import Annotated
 
-from fastapi import APIRouter, Depends
+from fastapi import APIRouter, Depends, HTTPException
 from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 from redis.asyncio import Redis
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -9,6 +9,7 @@ from app.config import settings
 from app.db import get_session
 from app.deps import get_current_user
 from app.modules.auth.schemas import (
+    ChangePasswordRequest,
     LoginRequest,
     LogoutRequest,
     MeResponse,
@@ -18,6 +19,7 @@ from app.modules.auth.schemas import (
     TotpSetupResponse,
     TotpStatusResponse,
 )
+from app.security import hash_password, verify_password
 from app.modules.auth.service import (
     authenticate,
     disable_totp,
@@ -64,6 +66,19 @@ async def logout(
 ):
     access_token = credentials.credentials if credentials else None
     await logout_service(redis, access_token, payload.refresh_token)
+    return {"ok": True}
+
+
+@router.post("/change-password")
+async def change_password(
+    payload: ChangePasswordRequest,
+    current_user: Annotated[User, Depends(get_current_user)],
+    session: Annotated[AsyncSession, Depends(get_session)],
+):
+    if not verify_password(payload.current_password, current_user.password_hash):
+        raise HTTPException(status_code=400, detail="Неверный текущий пароль.")
+    current_user.password_hash = hash_password(payload.new_password)
+    await session.commit()
     return {"ok": True}
 
 

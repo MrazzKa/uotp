@@ -49,3 +49,15 @@ class Category(TenantScopedMixin, Base):
 
     parent = relationship("Category", remote_side="Category.id")
     default_department = relationship("Department")
+
+
+class Sphere(TenantScopedMixin, Base):
+    """Сфера (направление работы) — по ней автоматически определяется контролёр."""
+
+    __tablename__ = "spheres"
+
+    code: Mapped[str] = mapped_column(String(64), nullable=False)
+    name_ru: Mapped[str] = mapped_column(String(255), nullable=False)
+    name_kk: Mapped[str] = mapped_column(String(255), nullable=False)
+    icon: Mapped[str | None] = mapped_column(String(64))
+    color: Mapped[str | None] = mapped_column(String(32))

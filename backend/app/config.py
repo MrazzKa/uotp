@@ -24,6 +24,12 @@ class Settings(BaseSettings):
     access_token_ttl: int = 900
     refresh_token_ttl: int = 604800
     ai_provider: str = "none"
+    # Голосовой модуль: распознавание речи и разбор задачи через OpenAI.
+    # Пусто = модуль выключен (эндпоинт вернёт 503). Ключ задаётся в .env.
+    openai_api_key: str = ""
+    openai_base_url: str = "https://api.openai.com/v1"
+    openai_stt_model: str = "whisper-1"
+    openai_parse_model: str = "gpt-4o-mini"
     # When true, ADMIN accounts without an enrolled TOTP secret are denied login
     # (enable after admins have completed 2FA enrollment).
     admin_2fa_required: bool = False

@@ -7,9 +7,23 @@ from pydantic import BaseModel
 class DashboardCounts(BaseModel):
     in_progress: int
     overdue: int
-    inspection: int
+    on_review: int
     closed_today: int
     new: int
+
+
+class OkrugStat(BaseModel):
+    id: UUID | None = None
+    name: str
+    total: int
+    done: int
+    pct: int
+
+
+class OkrugDetail(BaseModel):
+    name: str
+    by_user: list[OkrugStat] = []
+    by_sphere: list[OkrugStat] = []
 
 
 class PerDayPoint(BaseModel):
@@ -42,4 +56,5 @@ class DashboardSummary(BaseModel):
     per_day: list[PerDayPoint]
     by_status: list[StatusPoint]
     hot_zones: list[HotZone]
+    okrug_monitoring: list[OkrugStat] = []
     recent_events: list[RecentEvent]

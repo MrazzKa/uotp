@@ -5,11 +5,9 @@ from sqlalchemy import or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.modules.issues.models import Issue, IssueHistory
-from app.modules.issues.state import IssueStatus
+from app.modules.issues.state import OVERDUE_ELIGIBLE_STATUSES
 from app.modules.notifications.service import notify_issue_overdue
 from app.modules.sla.models import SlaRule
-
-FINAL_STATUSES = {IssueStatus.CLOSED, IssueStatus.REJECTED, IssueStatus.DUPLICATE}
 
 
 async def resolve_sla_rule(
@@ -103,7 +101,7 @@ def _overdue_candidate_filters(current: datetime):
         Issue.sla_due_at.is_not(None),
         Issue.sla_due_at < current,
         Issue.sla_paused_at.is_(None),
-        Issue.status.notin_([status.value for status in FINAL_STATUSES]),
+        Issue.status.in_([status.value for status in OVERDUE_ELIGIBLE_STATUSES]),
     )
 
 

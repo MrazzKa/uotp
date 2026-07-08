@@ -24,6 +24,7 @@ from app.modules.roles.router import router as roles_router
 from app.modules.sla.router import router as sla_router
 from app.modules.tenants.router import router as tenants_router
 from app.modules.users.router import router as users_router
+from app.modules.voice.router import router as voice_router
 
 
 @asynccontextmanager
@@ -55,6 +56,7 @@ app.include_router(sla_router, prefix=api_prefix)
 app.include_router(tenants_router, prefix=api_prefix)
 app.include_router(roles_router, prefix=api_prefix)
 app.include_router(users_router, prefix=api_prefix)
+app.include_router(voice_router, prefix=api_prefix)
 
 
 @app.get("/health")

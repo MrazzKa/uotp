@@ -8,7 +8,7 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.db import get_session
-from app.deps import deny_roles, get_current_user, require_roles
+from app.deps import get_current_user, require_roles
 from app.modules.audit.service import log_audit
 from app.modules.issues.models import ExifData, Issue, IssueAttachment, IssueHistory
 from app.modules.issues.schemas import (
@@ -20,7 +20,8 @@ from app.modules.issues.schemas import (
     IssueDetail,
     IssueHistoryRead,
     IssueListResponse,
-    IssueQualify,
+    IssuePersonalControl,
+    IssueSubmit,
     IssueTransition,
     IssueUpdate,
 )
@@ -31,9 +32,9 @@ from app.modules.issues.service import (
     create_issue,
     get_issue_or_404,
     list_issues,
-    mark_on_site,
-    qualify_issue,
+    set_personal_control,
     soft_delete_issue,
+    submit_issue,
     transition_issue,
     update_issue,
 )
@@ -41,9 +42,6 @@ from app.modules.issues.storage import presigned_url
 from app.modules.users.models import User
 
 router = APIRouter(prefix="/issues", tags=["issues"])
-
-# Roles permitted to see internal comments (staff notes).
-INTERNAL_COMMENT_ROLES = {"ADMIN", "DISPATCHER", "INSPECTOR"}
 
 
 def _serialize_attachment(attachment) -> IssueAttachmentRead:
@@ -57,7 +55,9 @@ def _serialize_attachment(attachment) -> IssueAttachmentRead:
 def serialize_issue_detail(issue: Issue, user: User) -> IssueDetail:
     detail = IssueDetail.model_validate(issue)
     detail.attachments = [_serialize_attachment(item) for item in issue.attachments]
-    if user.role is None or user.role.code not in INTERNAL_COMMENT_ROLES:
+    detail.on_personal_control = any(mark.user_id == user.id for mark in issue.personal_marks)
+    # Специалистам-исполнителям не показываем служебные (internal) комментарии.
+    if user.role is not None and user.role.code == "SPECIALIST":
         detail.comments = [c for c in detail.comments if not c.is_internal]
     return detail
 
@@ -65,7 +65,7 @@ def serialize_issue_detail(issue: Issue, user: User) -> IssueDetail:
 @router.post("", response_model=IssueDetail, status_code=status.HTTP_201_CREATED)
 async def create_issue_endpoint(
     payload: IssueCreate,
-    current_user: Annotated[User, Depends(require_roles("ADMIN", "DISPATCHER", "EXECUTOR"))],
+    current_user: Annotated[User, Depends(get_current_user)],
     session: Annotated[AsyncSession, Depends(get_session)],
 ):
     issue = await create_issue(session, payload, current_user)
@@ -80,9 +80,12 @@ async def list_issues_endpoint(
     category: UUID | None = None,
     district: UUID | None = None,
     assigned_to: UUID | None = None,
+    sphere: UUID | None = None,
+    importance: str | None = None,
     priority: str | None = None,
     source: str | None = None,
     is_overdue: bool | None = None,
+    personal: bool | None = None,
     q: str | None = None,
     cursor: str | None = None,
     limit: int = Query(default=50, ge=1, le=100),
@@ -94,9 +97,12 @@ async def list_issues_endpoint(
         category_id=category,
         district_id=district,
         assigned_to_id=assigned_to,
+        sphere_id=sphere,
+        importance=importance,
         priority=priority,
         source=source,
         is_overdue=is_overdue,
+        personal=personal,
         q=q,
         cursor=cursor,
         limit=limit,
@@ -136,18 +142,6 @@ async def delete_issue_endpoint(
     await soft_delete_issue(session, issue, current_user)
 
 
-@router.post("/{issue_id}/qualify", response_model=IssueDetail)
-async def qualify_issue_endpoint(
-    issue_id: UUID,
-    payload: IssueQualify,
-    current_user: Annotated[User, Depends(get_current_user)],
-    session: Annotated[AsyncSession, Depends(get_session)],
-):
-    issue = await get_issue_or_404(session, issue_id, current_user)
-    updated = await qualify_issue(session, issue, payload, current_user)
-    return serialize_issue_detail(updated, current_user)
-
-
 @router.post("/{issue_id}/assign", response_model=IssueDetail)
 async def assign_issue_endpoint(
     issue_id: UUID,
@@ -157,6 +151,18 @@ async def assign_issue_endpoint(
 ):
     issue = await get_issue_or_404(session, issue_id, current_user)
     updated = await assign_issue(session, issue, payload, current_user)
+    return serialize_issue_detail(updated, current_user)
+
+
+@router.post("/{issue_id}/submit", response_model=IssueDetail)
+async def submit_issue_endpoint(
+    issue_id: UUID,
+    payload: IssueSubmit,
+    current_user: Annotated[User, Depends(get_current_user)],
+    session: Annotated[AsyncSession, Depends(get_session)],
+):
+    issue = await get_issue_or_404(session, issue_id, current_user)
+    updated = await submit_issue(session, issue, current_user, payload.report)
     return serialize_issue_detail(updated, current_user)
 
 
@@ -172,21 +178,22 @@ async def transition_issue_endpoint(
     return serialize_issue_detail(updated, current_user)
 
 
-@router.post("/{issue_id}/on-site", response_model=IssueDetail)
-async def on_site_endpoint(
+@router.post("/{issue_id}/personal-control", response_model=IssueDetail)
+async def personal_control_endpoint(
     issue_id: UUID,
+    payload: IssuePersonalControl,
     current_user: Annotated[User, Depends(get_current_user)],
     session: Annotated[AsyncSession, Depends(get_session)],
 ):
     issue = await get_issue_or_404(session, issue_id, current_user)
-    updated = await mark_on_site(session, issue, current_user)
+    updated = await set_personal_control(session, issue, current_user, payload)
     return serialize_issue_detail(updated, current_user)
 
 
 @router.post("/{issue_id}/attachments", response_model=list[IssueAttachmentRead])
 async def upload_attachments_endpoint(
     issue_id: UUID,
-    current_user: Annotated[User, Depends(deny_roles("AKIM"))],
+    current_user: Annotated[User, Depends(get_current_user)],
     session: Annotated[AsyncSession, Depends(get_session)],
     files: Annotated[list[UploadFile], File()],
     attachment_type: Annotated[str, Form()] = "before",
@@ -205,7 +212,7 @@ async def upload_attachments_endpoint(
 async def add_comment_endpoint(
     issue_id: UUID,
     payload: IssueCommentCreate,
-    current_user: Annotated[User, Depends(deny_roles("AKIM"))],
+    current_user: Annotated[User, Depends(get_current_user)],
     session: Annotated[AsyncSession, Depends(get_session)],
 ):
     issue = await get_issue_or_404(session, issue_id, current_user)

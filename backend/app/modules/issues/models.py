@@ -4,7 +4,7 @@ from decimal import Decimal
 
 from geoalchemy2 import Geometry
 from pgvector.sqlalchemy import Vector
-from sqlalchemy import Boolean, DateTime, ForeignKey, Integer, Numeric, String, Text
+from sqlalchemy import Boolean, DateTime, ForeignKey, Integer, Numeric, String, Text, UniqueConstraint
 from sqlalchemy.dialects.postgresql import ARRAY, JSONB, UUID
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
@@ -57,7 +57,17 @@ class Issue(TenantScopedMixin, Base):
     reopen_count: Mapped[int] = mapped_column(Integer, default=0, nullable=False)
     embedding: Mapped[list[float] | None] = mapped_column(Vector(1024))
 
+    # v3: задача/поручение как единая сущность
+    task_type: Mapped[str] = mapped_column(String(20), default="TASK", nullable=False)
+    importance: Mapped[str] = mapped_column(String(20), default="NORMAL", nullable=False)
+    sphere_id: Mapped[uuid.UUID | None] = mapped_column(UUID(as_uuid=True), ForeignKey("spheres.id"))
+    controller_id: Mapped[uuid.UUID | None] = mapped_column(UUID(as_uuid=True), ForeignKey("users.id"))
+    due_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+
     category = relationship("Category", lazy="selectin")
+    sphere = relationship("Sphere", lazy="selectin")
+    controller = relationship("User", foreign_keys=[controller_id], lazy="selectin")
+    personal_marks = relationship("IssuePersonalMark", back_populates="issue", lazy="selectin")
     district = relationship("District", lazy="selectin")
     department = relationship("Department", lazy="selectin")
     created_by = relationship("User", foreign_keys=[created_by_id], lazy="selectin")
@@ -134,6 +144,24 @@ class IssueAssignee(TenantScopedMixin, Base):
     issue_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), ForeignKey("issues.id"), nullable=False)
     user_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), ForeignKey("users.id"), nullable=False)
     is_primary: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)
+    # v3: EXECUTOR (главный/исполнитель) или CO_EXECUTOR (соисполнитель)
+    role: Mapped[str] = mapped_column(String(20), default="EXECUTOR", nullable=False)
 
     issue = relationship("Issue", back_populates="assignees")
+    user = relationship("User", lazy="selectin")
+
+
+class IssuePersonalMark(TenantScopedMixin, Base):
+    """Личный контроль: пользователь взял задачу на свой контроль (галочка + важность)."""
+
+    __tablename__ = "issue_personal_marks"
+    __table_args__ = (
+        UniqueConstraint("issue_id", "user_id", name="uq_personal_mark_issue_user"),
+    )
+
+    issue_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), ForeignKey("issues.id"), nullable=False)
+    user_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), ForeignKey("users.id"), nullable=False)
+    importance: Mapped[str] = mapped_column(String(20), default="NORMAL", nullable=False)
+
+    issue = relationship("Issue", back_populates="personal_marks")
     user = relationship("User", lazy="selectin")

@@ -18,6 +18,10 @@ class User(TenantScopedMixin, Base):
     language: Mapped[str] = mapped_column(String(8), default="ru", nullable=False)
     is_active: Mapped[bool] = mapped_column(Boolean, default=True, nullable=False)
     totp_secret: Mapped[str | None] = mapped_column(String(255), nullable=True)
+    # v3: штатное расписание и зона контроля по сфере
+    position_title: Mapped[str | None] = mapped_column(String(255), nullable=True)
+    sphere_id: Mapped[str | None] = mapped_column(UUID(as_uuid=True), nullable=True)
+    controls_all_spheres: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)
 
     tenant = relationship("Tenant", back_populates="users", foreign_keys="User.tenant_id", lazy="selectin")
     role = relationship("Role", back_populates="users", lazy="selectin")

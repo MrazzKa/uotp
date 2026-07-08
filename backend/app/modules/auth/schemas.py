@@ -1,4 +1,4 @@
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 
 from app.modules.users.schemas import UserRead
 
@@ -7,6 +7,11 @@ class LoginRequest(BaseModel):
     login: str
     password: str
     totp_code: str | None = None
+
+
+class ChangePasswordRequest(BaseModel):
+    current_password: str
+    new_password: str = Field(min_length=6, max_length=128)
 
 
 class RefreshRequest(BaseModel):

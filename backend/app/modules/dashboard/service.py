@@ -4,36 +4,38 @@ from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 from sqlalchemy import case, distinct, func, or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.modules.catalog.models import District
+from app.modules.catalog.models import Department, District, Sphere
 from app.modules.issues.models import Issue, IssueAssignee, IssueHistory
 from app.modules.issues.state import IssueStatus
 from app.modules.users.models import User
 
+LEADERSHIP_ROLES = {"ADMIN", "AKIM", "DEPUTY", "APPARAT"}
+
 OPEN_STATUSES = {
     IssueStatus.NEW,
-    IssueStatus.QUALIFICATION,
     IssueStatus.ASSIGNED,
-    IssueStatus.ACCEPTED,
-    IssueStatus.IN_PROGRESS,
-    IssueStatus.COMPLETED,
-    IssueStatus.INSPECTION,
-    IssueStatus.RETURNED,
+    IssueStatus.REVIEW_CONTROLLER,
+    IssueStatus.REVIEW_AUTHOR,
+    IssueStatus.ON_HOLD,
 }
 
-IN_PROGRESS_STATUSES = {
-    IssueStatus.QUALIFICATION,
-    IssueStatus.ASSIGNED,
-    IssueStatus.ACCEPTED,
-    IssueStatus.IN_PROGRESS,
-}
+ON_REVIEW_STATUSES = {IssueStatus.REVIEW_CONTROLLER, IssueStatus.REVIEW_AUTHOR}
 
 
 def visible_issue_ids_statement(user: User):
     statement = select(Issue.id).where(Issue.tenant_id == user.tenant_id, Issue.deleted_at.is_(None))
-    if user.role.code == "EXECUTOR":
+    role = user.role.code if user.role else None
+    if role not in LEADERSHIP_ROLES and not user.controls_all_spheres:
         statement = (
             statement.outerjoin(IssueAssignee, IssueAssignee.issue_id == Issue.id)
-            .where(or_(Issue.assigned_to_id == user.id, IssueAssignee.user_id == user.id))
+            .where(
+                or_(
+                    Issue.created_by_id == user.id,
+                    Issue.controller_id == user.id,
+                    Issue.assigned_to_id == user.id,
+                    IssueAssignee.user_id == user.id,
+                )
+            )
             .distinct()
         )
     return statement
@@ -59,9 +61,9 @@ async def dashboard_summary(session: AsyncSession, user: User) -> dict:
     counts_row = (
         await session.execute(
             select(
-                func.count().filter(Issue.status.in_([status.value for status in IN_PROGRESS_STATUSES])).label("in_progress"),
+                func.count().filter(Issue.status == IssueStatus.ASSIGNED.value).label("in_progress"),
                 func.count().filter(Issue.is_overdue.is_(True)).label("overdue"),
-                func.count().filter(Issue.status == IssueStatus.INSPECTION.value).label("inspection"),
+                func.count().filter(Issue.status.in_([status.value for status in ON_REVIEW_STATUSES])).label("on_review"),
                 func.count()
                 .filter(Issue.status == IssueStatus.CLOSED.value, Issue.closed_at >= today_start)
                 .label("closed_today"),
@@ -174,11 +176,43 @@ async def dashboard_summary(session: AsyncSession, user: User) -> dict:
         ).mappings().all()
     ]
 
+    # Мониторинг по сельским округам: доля закрытых задач у исполнителей округа.
+    okrug_rows = (
+        await session.execute(
+            select(
+                Department.id.label("id"),
+                Department.name_ru.label("name"),
+                func.count(distinct(Issue.id)).label("total"),
+                func.count(distinct(Issue.id)).filter(Issue.status == IssueStatus.CLOSED.value).label("done"),
+            )
+            .select_from(Department)
+            .join(User, User.department_id == Department.id)
+            .join(Issue, Issue.assigned_to_id == User.id)
+            .where(
+                Department.tenant_id == user.tenant_id,
+                Department.type == "rural_okrug",
+                Issue.deleted_at.is_(None),
+            )
+            .group_by(Department.id, Department.name_ru)
+            .order_by(Department.name_ru)
+        )
+    ).mappings().all()
+    okrug_monitoring = [
+        {
+            "id": row["id"],
+            "name": row["name"],
+            "total": int(row["total"]),
+            "done": int(row["done"]),
+            "pct": round(int(row["done"]) / int(row["total"]) * 100) if row["total"] else 0,
+        }
+        for row in okrug_rows
+    ]
+
     return {
         "counts": {
             "in_progress": int(counts_row.in_progress),
             "overdue": int(counts_row.overdue),
-            "inspection": int(counts_row.inspection),
+            "on_review": int(counts_row.on_review),
             "closed_today": int(counts_row.closed_today),
             "new": int(counts_row.new),
         },
@@ -186,5 +220,67 @@ async def dashboard_summary(session: AsyncSession, user: User) -> dict:
         "per_day": per_day,
         "by_status": by_status,
         "hot_zones": hot_zones,
+        "okrug_monitoring": okrug_monitoring,
         "recent_events": recent_events,
     }
+
+
+def _breakdown(rows) -> list[dict]:
+    return [
+        {
+            "name": row["name"],
+            "total": int(row["total"]),
+            "done": int(row["done"]),
+            "pct": round(int(row["done"]) / int(row["total"]) * 100) if row["total"] else 0,
+        }
+        for row in rows
+    ]
+
+
+async def okrug_detail(session: AsyncSession, user: User, department_id) -> dict | None:
+    """Провал внутрь округа: по специалистам и по сферам."""
+    dept = (
+        await session.execute(
+            select(Department).where(
+                Department.id == department_id,
+                Department.tenant_id == user.tenant_id,
+                Department.deleted_at.is_(None),
+            )
+        )
+    ).scalar_one_or_none()
+    if dept is None:
+        return None
+    done_filter = Issue.status == IssueStatus.CLOSED.value
+
+    by_user_rows = (
+        await session.execute(
+            select(
+                User.full_name.label("name"),
+                func.count(distinct(Issue.id)).label("total"),
+                func.count(distinct(Issue.id)).filter(done_filter).label("done"),
+            )
+            .select_from(User)
+            .outerjoin(Issue, (Issue.assigned_to_id == User.id) & (Issue.deleted_at.is_(None)))
+            .where(User.department_id == department_id, User.tenant_id == user.tenant_id, User.deleted_at.is_(None))
+            .group_by(User.full_name)
+            .order_by(User.full_name)
+        )
+    ).mappings().all()
+
+    by_sphere_rows = (
+        await session.execute(
+            select(
+                Sphere.name_ru.label("name"),
+                func.count(distinct(Issue.id)).label("total"),
+                func.count(distinct(Issue.id)).filter(done_filter).label("done"),
+            )
+            .select_from(Issue)
+            .join(User, Issue.assigned_to_id == User.id)
+            .join(Sphere, Issue.sphere_id == Sphere.id)
+            .where(User.department_id == department_id, Issue.deleted_at.is_(None))
+            .group_by(Sphere.name_ru)
+            .order_by(Sphere.name_ru)
+        )
+    ).mappings().all()
+
+    return {"name": dept.name_ru, "by_user": _breakdown(by_user_rows), "by_sphere": _breakdown(by_sphere_rows)}

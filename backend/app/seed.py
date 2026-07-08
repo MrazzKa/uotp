@@ -1,106 +1,162 @@
+"""Демонстрационный сид Кызылжарского района (UOTP v3).
+
+Данные примерные и легко удаляемые: всё привязано к тенанту с кодом ``kyzylzhar``.
+Моделируем уровни управления района (аким, замы, аппарат, отделы, сельские округа,
+подрядные организации), а не конкретные штатные единицы. Реальные ФИО вносятся при внедрении.
+Снести демо-данные: python -m app.seed wipe.
+"""
 import asyncio
-import random
+import sys
 from datetime import UTC, datetime, timedelta
 
-from geoalchemy2.elements import WKTElement
-from sqlalchemy import select
+from sqlalchemy import delete, select
 
 from app.config import settings
 from app.db import AsyncSessionLocal
-from app.modules.catalog.models import Category, Department, District
-from app.modules.issues.models import Issue, IssueAssignee, IssueAttachment, IssueHistory
-from app.modules.issues.service import next_public_number
+from app.modules.audit.models import AuditLog
+from app.modules.catalog.models import Category, Department, District, Sphere
+from app.modules.issues.models import (
+    ExifData,
+    Issue,
+    IssueAssignee,
+    IssueAttachment,
+    IssueComment,
+    IssueHistory,
+    IssueNumberCounter,
+    IssuePersonalMark,
+)
+from app.modules.issues.service import default_due_at, next_public_number
 from app.modules.issues.state import IssueStatus
+from app.modules.notifications.models import DeviceToken, Notification
 from app.modules.roles.models import Role
-from app.modules.sla.service import apply_sla_deadlines, seed_default_sla_rules
+from app.modules.sla.models import SlaRule
 from app.modules.tenants.models import Tenant
 from app.modules.users.models import User
 from app.security import hash_password
 
+TENANT_CODE = "kyzylzhar"
+
 ROLES = [
     ("ADMIN", "Администратор", "Әкімші"),
-    ("DISPATCHER", "Диспетчер", "Диспетчер"),
-    ("EXECUTOR", "Исполнитель", "Орындаушы"),
-    ("AKIM", "Аким", "Әкім"),
-    ("INSPECTOR", "Инспектор", "Инспектор"),
+    ("AKIM", "Аким района", "Аудан әкімі"),
+    ("DEPUTY", "Заместитель акима", "Аким орынбасары"),
+    ("APPARAT", "Руководитель аппарата", "Аппарат басшысы"),
+    ("DEPT_HEAD", "Руководитель отдела", "Бөлім басшысы"),
+    ("AKIM_SO", "Аким сельского округа", "Ауылдық округ әкімі"),
+    ("SPECIALIST", "Главный специалист", "Бас маман"),
+    ("OPERATOR", "Оператор", "Оператор"),
+    ("CONTRACTOR", "Руководитель подрядной организации", "Мердігер ұйым басшысы"),
 ]
 
+# Открытый справочник сфер (по названиям районных отделов).
+SPHERES = [
+    ("econ", "Экономика и финансы", "Экономика және қаржы", "chart", "#2563eb"),
+    ("agro", "Сельское хозяйство и земельные отношения", "Ауыл шаруашылығы және жер қатынастары", "wheat", "#65a30d"),
+    ("gkh", "ЖКХ, транспорт и дороги", "ТКШ, көлік және жолдар", "bolt", "#f59e0b"),
+    ("build", "Строительство и архитектура", "Құрылыс және сәулет", "building", "#0ea5e9"),
+    ("edu", "Образование", "Білім беру", "book", "#7c3aed"),
+    ("culture", "Культура, спорт и языки", "Мәдениет, спорт және тілдер", "music", "#db2777"),
+    ("social", "Занятость и социальные программы", "Жұмыспен қамту және әлеуметтік бағдарламалар", "users", "#0891b2"),
+    ("inpol", "Внутренняя политика", "Ішкі саясат", "flag", "#475569"),
+    ("vet", "Ветеринария", "Ветеринария", "paw", "#16a34a"),
+    ("business", "Предпринимательство", "Кәсіпкерлік", "store", "#ea580c"),
+    ("emergency", "ЧС и оперативные вопросы", "ТЖ және жедел мәселелер", "shield", "#dc2626"),
+    ("apparatus", "Аппарат и организационное", "Аппарат және ұйымдастыру", "briefcase", "#334155"),
+]
+
+# code, name_ru, name_kk, type, parent_code
+# типы: apparatus, apparat_dept, district_dept, rural_okrug, contractor
 DEPARTMENTS = [
-    ("city_services", "Городские службы", "Қалалық қызметтер", "internal"),
-    ("roads", "Отдел дорог", "Жол бөлімі", "internal"),
-    ("lighting", "Служба освещения", "Жарықтандыру қызметі", "contractor"),
-    ("sanitation", "Санитарная служба", "Санитарлық қызмет", "contractor"),
-    ("parks", "Зеленое хозяйство", "Жасыл шаруашылық", "contractor"),
+    ("apparat", "Аппарат акима района", "Аудан әкімінің аппараты", "apparatus", None),
+    ("org_dept", "Организационный отдел", "Ұйымдастыру бөлімі", "apparat_dept", "apparat"),
+    ("control_dept", "Отдел контроля исполнения", "Орындауды бақылау бөлімі", "apparat_dept", "apparat"),
+    ("dep_econ", "Отдел экономики и финансов", "Экономика және қаржы бөлімі", "district_dept", None),
+    ("dep_agro", "Отдел сельского хозяйства и земельных отношений", "Ауыл шаруашылығы бөлімі", "district_dept", None),
+    ("dep_gkh", "Отдел ЖКХ, транспорта и автодорог", "ТКШ бөлімі", "district_dept", None),
+    ("dep_build", "Отдел строительства и архитектуры", "Құрылыс бөлімі", "district_dept", None),
+    ("dep_edu", "Отдел образования", "Білім бөлімі", "district_dept", None),
+    ("dep_culture", "Отдел культуры и спорта", "Мәдениет бөлімі", "district_dept", None),
+    ("dep_social", "Отдел занятости и социальных программ", "Жұмыспен қамту бөлімі", "district_dept", None),
+    ("dep_inpol", "Отдел внутренней политики", "Ішкі саясат бөлімі", "district_dept", None),
+    ("dep_vet", "Отдел ветеринарии", "Ветеринария бөлімі", "district_dept", None),
+    ("dep_business", "Отдел предпринимательства", "Кәсіпкерлік бөлімі", "district_dept", None),
+    ("con_clean", "ТОО Бишкуль Тазалык", "Бішкүл Тазалық ЖШС", "contractor", None),
+    ("con_road", "ТОО Дорстрой-Север", "Дорстрой-Север ЖШС", "contractor", None),
 ]
 
-DISTRICTS = [
-    ("center", "Центр", "Орталық"),
-    ("bereke", "Береке", "Береке"),
-    ("rabochiy", "Рабочий поселок", "Жұмысшы кенті"),
-    ("podgora", "Подгора", "Подгора"),
+# 17 сельских округов Кызылжарского района (org-единицы типа rural_okrug)
+RURAL_OKRUGS = [
+    ("so_asanov", "Асановский сельский округ"),
+    ("so_arhangel", "Архангельский сельский округ"),
+    ("so_berezov", "Березовский сельский округ"),
+    ("so_beskol", "Бескольский сельский округ"),
+    ("so_bogolyub", "Боголюбовский сельский округ"),
+    ("so_vagulin", "Вагулинский сельский округ"),
+    ("so_vinograd", "Виноградовский сельский округ"),
+    ("so_dolmatov", "Долматовский сельский округ"),
+    ("so_kyzylzhar", "Кызылжарский сельский округ"),
+    ("so_nalobin", "Налобинский сельский округ"),
+    ("so_novonikol", "Новоникольский сельский округ"),
+    ("so_peterfeld", "Петерфельдский сельский округ"),
+    ("so_pribrezh", "Прибрежный сельский округ"),
+    ("so_rassvet", "Рассветский сельский округ"),
+    ("so_sokolov", "Соколовский сельский округ"),
+    ("so_teplich", "Тепличный сельский округ"),
+    ("so_yakor", "Якорьский сельский округ"),
 ]
 
-DISTRICT_POLYGONS = {
-    "center": [(69.105, 54.845), (69.165, 54.845), (69.165, 54.895), (69.105, 54.895)],
-    "bereke": [(69.165, 54.845), (69.235, 54.845), (69.235, 54.900), (69.165, 54.900)],
-    "rabochiy": [(69.075, 54.810), (69.145, 54.810), (69.145, 54.845), (69.075, 54.845)],
-    "podgora": [(69.095, 54.895), (69.205, 54.895), (69.205, 54.930), (69.095, 54.930)],
-}
-
-CATEGORIES = [
-    ("roads", "Дороги", "Жолдар", None, "HIGH", "roads", "road", "#2563eb"),
-    ("road_pothole", "Яма на дороге", "Жолдағы шұңқыр", "roads", "HIGH", "roads", "circle", "#1d4ed8"),
-    ("road_sign", "Дорожный знак", "Жол белгісі", "roads", "MEDIUM", "roads", "signpost", "#3b82f6"),
-    ("lighting", "Освещение", "Жарықтандыру", None, "MEDIUM", "lighting", "lamp", "#f59e0b"),
-    ("lamp_broken", "Не работает фонарь", "Шам істемейді", "lighting", "MEDIUM", "lighting", "lightbulb", "#d97706"),
-    ("sanitation", "Санитария", "Санитария", None, "MEDIUM", "sanitation", "trash", "#059669"),
-    ("trash_overflow", "Переполненный контейнер", "Толған контейнер", "sanitation", "HIGH", "sanitation", "trash-2", "#047857"),
-    ("parks", "Благоустройство", "Абаттандыру", None, "LOW", "parks", "trees", "#16a34a"),
-    ("tree_damage", "Поврежденное дерево", "Зақымдалған ағаш", "parks", "LOW", "parks", "tree", "#15803d"),
+# code, email, ФИО, роль, сфера, контролирует все сферы, отдел/округ, должность
+USERS = [
+    ("admin", "admin@uotp.local", "Администратор системы", "ADMIN", None, False, None, "Администратор"),
+    ("akim", "akim@uotp.local", "Бейбут Исманов", "AKIM", None, True, "apparat", "Аким Кызылжарского района"),
+    ("deputy_apk", "deputy1@uotp.local", "Санат Аубакиров", "DEPUTY", "econ", True, "apparat", "Заместитель акима (АПК, экономика, финансы)"),
+    ("deputy_social", "deputy2@uotp.local", "Азат Ибраев", "DEPUTY", "social", True, "apparat", "Заместитель акима (социальная сфера)"),
+    ("deputy_oper", "deputy3@uotp.local", "Бактияр Бикенев", "DEPUTY", "gkh", True, "apparat", "Заместитель акима (оперативные вопросы, ЖКХ, ЧС)"),
+    ("apparat", "apparat@uotp.local", "Гульнара Ахметова", "APPARAT", None, True, "apparat", "Руководитель аппарата"),
+    ("operator", "operator@uotp.local", "Дмитрий Ким", "OPERATOR", None, False, "org_dept", "Оператор"),
+    ("head_gkh", "head_gkh@uotp.local", "Асхат Нурланов", "DEPT_HEAD", "gkh", False, "dep_gkh", "Руководитель отдела ЖКХ"),
+    ("head_edu", "head_edu@uotp.local", "Марина Ли", "DEPT_HEAD", "edu", False, "dep_edu", "Руководитель отдела образования"),
+    ("head_agro", "head_agro@uotp.local", "Ерлан Досов", "DEPT_HEAD", "agro", False, "dep_agro", "Руководитель отдела сельского хозяйства"),
+    ("spec_gkh", "spec_gkh@uotp.local", "Айгуль Сатпаева", "SPECIALIST", "gkh", False, "dep_gkh", "Главный специалист (ЖКХ)"),
+    ("spec_road", "spec_road@uotp.local", "Нурбек Оспанов", "SPECIALIST", "gkh", False, "dep_gkh", "Главный специалист (дороги)"),
+    ("spec_edu", "spec_edu@uotp.local", "Данияр Ахметов", "SPECIALIST", "edu", False, "dep_edu", "Главный специалист (образование)"),
+    ("akim_beskol", "so_beskol@uotp.local", "Кайрат Смагулов", "AKIM_SO", None, False, "so_beskol", "Аким Бескольского с/о"),
+    ("akim_sokolov", "so_sokolov@uotp.local", "Асель Жумаева", "AKIM_SO", None, False, "so_sokolov", "Аким Соколовского с/о"),
+    ("akim_vinograd", "so_vinograd@uotp.local", "Виктор Петров", "AKIM_SO", None, False, "so_vinograd", "Аким Виноградовского с/о"),
+    ("con_clean", "con_clean@uotp.local", "Олег Мельник", "CONTRACTOR", "gkh", False, "con_clean", "Руководитель ТОО Бишкуль Тазалык"),
+    ("con_road", "con_road@uotp.local", "Тимур Идрисов", "CONTRACTOR", "gkh", False, "con_road", "Руководитель ТОО Дорстрой-Север"),
 ]
 
-STATUS_POOL = [
-    IssueStatus.NEW,
-    IssueStatus.QUALIFICATION,
-    IssueStatus.ASSIGNED,
-    IssueStatus.ACCEPTED,
-    IssueStatus.IN_PROGRESS,
-    IssueStatus.COMPLETED,
-    IssueStatus.INSPECTION,
-    IssueStatus.CLOSED,
+# заголовок, сфера, ключ исполнителя, важность, статус, на личном контроле акима, дней назад
+TASKS = [
+    ("Устранить яму на трассе при въезде в Бишкуль", "gkh", "con_road", "URGENT", IssueStatus.ASSIGNED, True, 1),
+    ("Заменить перегоревшие фонари на центральной улице", "gkh", "spec_gkh", "IMPORTANT", IssueStatus.REVIEW_CONTROLLER, True, 2),
+    ("Организовать вывоз мусора с несанкционированной свалки", "gkh", "con_clean", "URGENT", IssueStatus.ASSIGNED, True, 1),
+    ("Подготовить справку по очереди в детские сады района", "social", "spec_edu", "IMPORTANT", IssueStatus.REVIEW_AUTHOR, True, 2),
+    ("Проверить готовность школ к учебному году", "edu", "head_edu", "IMPORTANT", IssueStatus.ASSIGNED, False, 3),
+    ("Составить план весенних полевых работ", "agro", "head_agro", "NORMAL", IssueStatus.NEW, False, 0),
+    ("Отчитаться о благоустройстве Соколовского округа", "gkh", "akim_sokolov", "NORMAL", IssueStatus.ASSIGNED, False, 2),
+    ("Проверить состояние водопровода в Бескольском округе", "gkh", "akim_beskol", "URGENT", IssueStatus.ASSIGNED, True, 4),
+    ("Подготовить данные по занятости за квартал", "social", "spec_edu", "NORMAL", IssueStatus.CLOSED, False, 9),
+    ("Восстановить дорожный знак на повороте к трассе", "gkh", "spec_road", "NORMAL", IssueStatus.REVIEW_CONTROLLER, False, 3),
+    ("Организовать субботник в Виноградовском округе", "gkh", "akim_vinograd", "NORMAL", IssueStatus.ASSIGNED, False, 2),
+    ("Собрать сведения по поголовью скота", "vet", "head_agro", "NORMAL", IssueStatus.ON_HOLD, False, 6),
+    ("Подготовить отчёт по обращениям граждан за месяц", "apparatus", "operator", "NORMAL", IssueStatus.CLOSED, False, 12),
+    ("Проверить освещение возле школы в Бескольском округе", "gkh", "akim_beskol", "IMPORTANT", IssueStatus.REVIEW_CONTROLLER, True, 3),
 ]
-
-
-def multipolygon_wkt(points: list[tuple[float, float]]) -> WKTElement:
-    closed = points + [points[0]]
-    coords = ", ".join(f"{lon} {lat}" for lon, lat in closed)
-    return WKTElement(f"MULTIPOLYGON((({coords})))", srid=4326)
-
-
-def random_point_for_district(code: str) -> tuple[float, float]:
-    points = DISTRICT_POLYGONS[code]
-    min_lon = min(point[0] for point in points)
-    max_lon = max(point[0] for point in points)
-    min_lat = min(point[1] for point in points)
-    max_lat = max(point[1] for point in points)
-    return random.uniform(min_lat, max_lat), random.uniform(min_lon, max_lon)
-
-
-def point_wkt(latitude: float, longitude: float) -> WKTElement:
-    return WKTElement(f"POINT({longitude} {latitude})", srid=4326)
 
 
 async def get_or_create_tenant(session) -> Tenant:
     tenant = (
-        await session.execute(select(Tenant).where(Tenant.code == "petropavlovsk"))
+        await session.execute(select(Tenant).where(Tenant.code == TENANT_CODE))
     ).scalar_one_or_none()
     if tenant is None:
         tenant = Tenant(
-            code="petropavlovsk",
-            name_ru="Петропавловск",
-            name_kk="Петропавл",
-            subdomain="petropavlovsk",
-            timezone="Asia/Qyzylorda",
+            code=TENANT_CODE,
+            name_ru="Кызылжарский район",
+            name_kk="Қызылжар ауданы",
+            subdomain=TENANT_CODE,
+            timezone="Asia/Almaty",
             locale_default="ru",
             tenant_id=None,
         )
@@ -110,212 +166,124 @@ async def get_or_create_tenant(session) -> Tenant:
     return tenant
 
 
-async def seed_roles_users(session, tenant: Tenant) -> dict[str, User]:
-    users: dict[str, User] = {}
-    for code, name_ru, name_kk in ROLES:
+async def seed_reference(session, tenant: Tenant):
+    roles: dict[str, Role] = {}
+    for code, ru, kk in ROLES:
         role = (
             await session.execute(select(Role).where(Role.tenant_id == tenant.id, Role.code == code))
         ).scalar_one_or_none()
         if role is None:
-            role = Role(
-                tenant_id=tenant.id,
-                code=code,
-                name_ru=name_ru,
-                name_kk=name_kk,
-                permissions={},
-                is_system=True,
-            )
+            role = Role(tenant_id=tenant.id, code=code, name_ru=ru, name_kk=kk, permissions={}, is_system=True)
             session.add(role)
             await session.flush()
-        email = f"{code.lower()}@uotp.local"
+        roles[code] = role
+
+    spheres: dict[str, Sphere] = {}
+    for code, ru, kk, icon, color in SPHERES:
+        sphere = (
+            await session.execute(select(Sphere).where(Sphere.tenant_id == tenant.id, Sphere.code == code))
+        ).scalar_one_or_none()
+        if sphere is None:
+            sphere = Sphere(tenant_id=tenant.id, code=code, name_ru=ru, name_kk=kk, icon=icon, color=color)
+            session.add(sphere)
+            await session.flush()
+        spheres[code] = sphere
+
+    departments: dict[str, Department] = {}
+    for code, ru, kk, type_, parent_code in DEPARTMENTS:
+        dept = (
+            await session.execute(
+                select(Department).where(Department.tenant_id == tenant.id, Department.name_ru == ru)
+            )
+        ).scalar_one_or_none()
+        if dept is None:
+            dept = Department(
+                tenant_id=tenant.id, name_ru=ru, name_kk=kk, type=type_,
+                parent_id=departments[parent_code].id if parent_code else None, contacts={},
+            )
+            session.add(dept)
+            await session.flush()
+        departments[code] = dept
+    # 17 сельских округов как орг-единицы
+    for code, ru in RURAL_OKRUGS:
+        dept = (
+            await session.execute(
+                select(Department).where(Department.tenant_id == tenant.id, Department.name_ru == ru)
+            )
+        ).scalar_one_or_none()
+        if dept is None:
+            dept = Department(tenant_id=tenant.id, name_ru=ru, name_kk=ru, type="rural_okrug", contacts={})
+            session.add(dept)
+            await session.flush()
+        departments[code] = dept
+    return roles, spheres, departments
+
+
+async def seed_users(session, tenant, roles, spheres, departments) -> dict[str, User]:
+    users: dict[str, User] = {}
+    for code, email, full_name, role_code, sphere_code, controls_all, dept_code, position in USERS:
         user = (await session.execute(select(User).where(User.email == email))).scalar_one_or_none()
         if user is None:
             user = User(
-                tenant_id=tenant.id,
-                full_name=name_ru,
-                phone=None,
-                email=email,
-                password_hash=hash_password("demo123"),
-                role_id=role.id,
-                language="ru",
+                tenant_id=tenant.id, full_name=full_name, email=email,
+                password_hash=hash_password("demo123"), role_id=roles[role_code].id, language="ru",
+                position_title=position,
+                sphere_id=spheres[sphere_code].id if sphere_code else None,
+                controls_all_spheres=controls_all,
+                department_id=departments[dept_code].id if dept_code else None,
             )
             session.add(user)
             await session.flush()
-        user.role = role
-        user.tenant = tenant
         users[code] = user
     return users
 
 
-async def seed_catalogs(session, tenant: Tenant) -> tuple[dict[str, Department], dict[str, District], dict[str, Category]]:
-    departments = {}
-    for code, name_ru, name_kk, type_ in DEPARTMENTS:
-        department = (
-            await session.execute(
-                select(Department).where(Department.tenant_id == tenant.id, Department.name_ru == name_ru)
-            )
-        ).scalar_one_or_none()
-        if department is None:
-            department = Department(
-                tenant_id=tenant.id,
-                name_ru=name_ru,
-                name_kk=name_kk,
-                type=type_,
-                contacts={"phone": "+7 7152 00 00 00"},
-            )
-            session.add(department)
-            await session.flush()
-        departments[code] = department
-
-    districts = {}
-    for code, name_ru, name_kk in DISTRICTS:
-        district = (
-            await session.execute(select(District).where(District.tenant_id == tenant.id, District.code == code))
-        ).scalar_one_or_none()
-        if district is None:
-            district = District(tenant_id=tenant.id, code=code, name_ru=name_ru, name_kk=name_kk)
-            session.add(district)
-            await session.flush()
-        district.geometry = multipolygon_wkt(DISTRICT_POLYGONS[code])
-        districts[code] = district
-
-    categories = {}
-    for code, name_ru, name_kk, parent_code, priority, department_code, icon, color in CATEGORIES:
-        category = (
-            await session.execute(select(Category).where(Category.tenant_id == tenant.id, Category.code == code))
-        ).scalar_one_or_none()
-        if category is None:
-            parent = categories.get(parent_code) if parent_code else None
-            category = Category(
-                tenant_id=tenant.id,
-                code=code,
-                name_ru=name_ru,
-                name_kk=name_kk,
-                parent_id=parent.id if parent else None,
-                default_priority=priority,
-                default_department_id=departments[department_code].id,
-                icon=icon,
-                color=color,
-            )
-            session.add(category)
-            await session.flush()
-        categories[code] = category
-    return departments, districts, categories
-
-
-def demo_title(category: Category, index: int) -> str:
-    return f"{category.name_ru}: обращение #{index + 1}"
-
-
-async def seed_issues(
-    session,
-    tenant: Tenant,
-    users: dict[str, User],
-    departments: dict[str, Department],
-    districts: dict[str, District],
-    categories: dict[str, Category],
-) -> None:
-    existing_count = (
+async def seed_tasks(session, tenant, spheres, users) -> None:
+    existing = (
         await session.execute(select(Issue).where(Issue.tenant_id == tenant.id).limit(1))
     ).scalar_one_or_none()
-    if existing_count is not None:
-        result = await session.execute(select(Issue).where(Issue.tenant_id == tenant.id, Issue.deleted_at.is_(None)))
-        all_issues = result.scalars().all()
-        district_items = list(districts.items())
-        random.seed(84)
-        for index, issue in enumerate(all_issues):
-            code, district = district_items[index % len(district_items)]
-            latitude, longitude = random_point_for_district(code)
-            issue.latitude = latitude
-            issue.longitude = longitude
-            issue.geometry = point_wkt(latitude, longitude)
-            issue.district_id = district.id
-            await apply_sla_deadlines(session, issue, base_time=issue.created_at, include_inspection=True)
-            issue.is_overdue = bool(
-                issue.sla_due_at
-                and issue.sla_due_at < datetime.now(UTC)
-                and issue.status not in {IssueStatus.CLOSED, IssueStatus.REJECTED, IssueStatus.DUPLICATE}
-            )
+    if existing is not None:
         return
-
-    executor = users["EXECUTOR"]
-    dispatcher = users["DISPATCHER"]
-    category_values = [category for category in categories.values() if category.parent_id is not None]
-    department_values = list(departments.values())
-    random.seed(42)
-
-    for index in range(72):
-        category = random.choice(category_values)
-        district_code, district = random.choice(list(districts.items()))
-        department = random.choice(department_values)
-        status_value = random.choice(STATUS_POOL)
-        created_at = datetime.now(UTC) - timedelta(days=random.randint(0, 30), hours=random.randint(0, 23))
+    now = datetime.now(UTC)
+    for index, (title, sphere_code, executor_key, importance, status_value, personal, days_ago) in enumerate(TASKS):
+        created_at = now - timedelta(days=days_ago, hours=index)
+        author = users["akim"] if personal else users["apparat"]
+        controller = users["head_gkh"] if sphere_code == "gkh" else users["apparat"]
+        executor = users[executor_key]
+        due_at = default_due_at(importance, created_at)
         public_number = await next_public_number(session, tenant.id, tenant.code)
-        latitude, longitude = random_point_for_district(district_code)
+        assigned = status_value not in {IssueStatus.NEW, IssueStatus.DRAFT}
+        paused = status_value == IssueStatus.ON_HOLD
+        is_overdue = bool(
+            due_at < now
+            and status_value in {IssueStatus.NEW, IssueStatus.ASSIGNED, IssueStatus.REVIEW_CONTROLLER, IssueStatus.REVIEW_AUTHOR}
+            and not paused
+        )
         issue = Issue(
-            tenant_id=tenant.id,
-            public_number=public_number,
-            source=random.choice(["app", "portal"]),
-            title=demo_title(category, index),
-            description="Демо-описание городской задачи для проверки списка, карточки и маршрута исполнения.",
-            primary_category_id=category.id,
-            tags=[category.code],
-            status=status_value,
-            priority=category.default_priority,
-            address=f"Петропавловск, участок {index + 1}",
-            latitude=latitude,
-            longitude=longitude,
-            geometry=point_wkt(latitude, longitude),
-            district_id=district.id,
-            created_by_id=dispatcher.id,
-            assigned_to_id=executor.id if status_value not in {IssueStatus.NEW, IssueStatus.QUALIFICATION} else None,
-            department_id=department.id,
-            is_overdue=index % 11 == 0,
-            created_at=created_at,
-            updated_at=created_at,
+            tenant_id=tenant.id, public_number=public_number, source="internal", task_type="TASK",
+            title=title, description=title, tags=[sphere_code], status=status_value, priority="MEDIUM",
+            importance=importance, sphere_id=spheres[sphere_code].id,
+            controller_id=controller.id if assigned else None, due_at=due_at, sla_due_at=due_at,
+            created_by_id=author.id, assigned_to_id=executor.id if assigned else None,
+            is_overdue=is_overdue, sla_paused_at=created_at if paused else None,
+            closed_at=(created_at + timedelta(hours=2)) if status_value == IssueStatus.CLOSED else None,
+            created_at=created_at, updated_at=created_at,
         )
         session.add(issue)
         await session.flush()
-        await apply_sla_deadlines(session, issue, base_time=created_at, include_inspection=True)
-        issue.is_overdue = bool(
-            issue.sla_due_at
-            and issue.sla_due_at < datetime.now(UTC)
-            and issue.status not in {IssueStatus.CLOSED, IssueStatus.REJECTED, IssueStatus.DUPLICATE}
-        )
+        if assigned:
+            session.add(
+                IssueAssignee(tenant_id=tenant.id, issue_id=issue.id, user_id=executor.id, is_primary=True, role="EXECUTOR")
+            )
         session.add(
             IssueHistory(
-                tenant_id=tenant.id,
-                issue_id=issue.id,
-                actor_id=dispatcher.id,
-                action="created",
-                to_status=IssueStatus.NEW,
-                payload={"seed": True},
-                created_at=created_at,
+                tenant_id=tenant.id, issue_id=issue.id, actor_id=author.id, action="created",
+                to_status=IssueStatus.NEW, payload={"seed": True}, created_at=created_at,
             )
         )
-        if issue.assigned_to_id:
+        if personal:
             session.add(
-                IssueAssignee(
-                    tenant_id=tenant.id,
-                    issue_id=issue.id,
-                    user_id=executor.id,
-                    is_primary=True,
-                )
-            )
-        if index % 3 == 0:
-            session.add(
-                IssueAttachment(
-                    tenant_id=tenant.id,
-                    issue_id=issue.id,
-                    uploaded_by_id=dispatcher.id,
-                    file_url=f"https://placehold.co/1200x800?text={public_number}",
-                    medium_url=f"https://placehold.co/800x533?text={public_number}",
-                    thumbnail_url=f"https://placehold.co/320x213?text={public_number}",
-                    attachment_type="before",
-                    mime_type="image/png",
-                    size_bytes=1024,
-                    antifraud_flags={},
-                )
+                IssuePersonalMark(tenant_id=tenant.id, issue_id=issue.id, user_id=users["akim"].id, importance=importance)
             )
 
 
@@ -324,14 +292,37 @@ async def seed() -> None:
         raise SystemExit("Seed is allowed only when APP_ENV is dev or demo.")
     async with AsyncSessionLocal() as session:
         tenant = await get_or_create_tenant(session)
-        users = await seed_roles_users(session, tenant)
-        departments, districts, categories = await seed_catalogs(session, tenant)
-        await seed_default_sla_rules(session, tenant.id)
+        roles, spheres, departments = await seed_reference(session, tenant)
+        users = await seed_users(session, tenant, roles, spheres, departments)
         await session.flush()
-        await seed_issues(session, tenant, users, departments, districts, categories)
+        await seed_tasks(session, tenant, spheres, users)
         await session.commit()
-    print("Demo tenant, roles, users, catalogs and issues are ready.")
+    print(f"Demo tenant '{TENANT_CODE}' (Кызылжарский район): roles, spheres, org units, users and tasks are ready.")
+
+
+async def wipe() -> None:
+    """Полностью удалить демо-данные тенанта (для внесения реальных данных)."""
+    async with AsyncSessionLocal() as session:
+        tenant = (
+            await session.execute(select(Tenant).where(Tenant.code == TENANT_CODE))
+        ).scalar_one_or_none()
+        if tenant is None:
+            print("Nothing to wipe.")
+            return
+        tid = tenant.id
+        for model in (
+            ExifData, IssueAttachment, IssueComment, Notification, IssuePersonalMark,
+            IssueAssignee, IssueHistory, AuditLog, DeviceToken, Issue,
+            SlaRule, Category, District, IssueNumberCounter,
+            User, Department, Sphere, Role, Tenant,
+        ):
+            await session.execute(delete(model).where(model.tenant_id == tid))
+        await session.commit()
+    print(f"Demo tenant '{TENANT_CODE}' wiped.")
 
 
 if __name__ == "__main__":
-    asyncio.run(seed())
+    if len(sys.argv) > 1 and sys.argv[1] == "wipe":
+        asyncio.run(wipe())
+    else:
+        asyncio.run(seed())
