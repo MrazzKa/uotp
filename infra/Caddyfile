@@ -1,0 +1,17 @@
+# Пограничный прокси с автоматическим TLS (Let's Encrypt).
+# Наружу открыты только 80 и 443, всё остальное внутри compose-сети.
+{
+	email {$ACME_EMAIL}
+}
+
+# Веб-портал и API (API проксирует внутренний Nginx веба на backend).
+{$DOMAIN} {
+	encode gzip
+	reverse_proxy web:80
+}
+
+# Файловое хранилище (presigned-ссылки на вложения указывают сюда).
+{$FILES_DOMAIN} {
+	encode gzip
+	reverse_proxy minio:9000
+}
