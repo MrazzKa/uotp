@@ -39,6 +39,7 @@ export type CatalogItem = {
   icon?: string | null;
   color?: string | null;
   type?: string;
+  controller_id?: string | null;
 };
 
 export type IssueStatus =

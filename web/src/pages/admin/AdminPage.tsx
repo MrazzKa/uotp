@@ -16,13 +16,14 @@ import {
   deleteSphere,
   fetchCatalogs,
   fetchRoles,
+  updateSphere,
   updateUser
 } from "../../lib/api";
 import type { CatalogItem, Role, User } from "../../types";
 
 type Tab = "spheres" | "departments" | "users";
 
-const DEPARTMENT_TYPES = ["apparatus", "apparat_dept", "district_dept", "rural_okrug", "contractor"];
+const DEPARTMENT_TYPES = ["apparatus", "apparat_dept", "district_dept", "rural_okrug", "contractor", "organization"];
 
 function deptTypeLabel(type: string) {
   return type === "apparatus"
@@ -35,7 +36,9 @@ function deptTypeLabel(type: string) {
           ? "Сельский округ"
           : type === "contractor"
             ? "Подрядная организация"
-            : type;
+            : type === "organization"
+              ? "Организация/ведомство"
+              : type;
 }
 
 export function AdminPage() {
@@ -63,6 +66,7 @@ function SpheresAdmin() {
   const invalidate = () => queryClient.invalidateQueries({ queryKey: ["catalogs"] });
   const create = useMutation({ mutationFn: createSphere, onSuccess: invalidate });
   const remove = useMutation({ mutationFn: deleteSphere, onSuccess: invalidate });
+  const patch = useMutation({ mutationFn: ({ id, payload }: { id: string; payload: Record<string, unknown> }) => updateSphere(id, payload), onSuccess: invalidate });
   const [form, setForm] = useState({ code: "", name_ru: "", name_kk: "", color: "#2563eb" });
 
   function submit(event: FormEvent) {
@@ -81,7 +85,7 @@ function SpheresAdmin() {
       </Card>
       <DataTable>
         <TableHead>
-          <tr>{["code", "nameRu", "nameKk", ""].map((key, i) => <TableHeaderCell key={i}>{key ? t(key) : ""}</TableHeaderCell>)}</tr>
+          <tr>{["code", "nameRu", "controller", ""].map((key, i) => <TableHeaderCell key={i}>{key ? t(key) : ""}</TableHeaderCell>)}</tr>
         </TableHead>
         <tbody>
           {catalogs.data?.spheres.map((sphere: CatalogItem) => (
@@ -93,7 +97,16 @@ function SpheresAdmin() {
                 </span>
               </TableCell>
               <TableCell>{sphere.name_ru}</TableCell>
-              <TableCell>{sphere.name_kk}</TableCell>
+              <TableCell>
+                <Select
+                  value={sphere.controller_id ?? ""}
+                  onChange={(e) => patch.mutate({ id: sphere.id, payload: { controller_id: e.target.value || null } })}
+                  className="min-w-[180px]"
+                >
+                  <option value="">—</option>
+                  {catalogs.data?.users.map((u: User) => <option key={u.id} value={u.id}>{u.full_name}</option>)}
+                </Select>
+              </TableCell>
               <TableCell><IconDelete onClick={() => remove.mutate(sphere.id)} /></TableCell>
             </TableRow>
           ))}
