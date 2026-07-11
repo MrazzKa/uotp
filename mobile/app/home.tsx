@@ -384,15 +384,15 @@ function dueLabel(issue: Issue, overdueLabel: string) {
 function IssueList({ onOpen }: { onOpen: (issue: Issue) => void }) {
   const { t } = useTranslation();
   const { colors } = useTheme();
-  const user = useAuthStore((state) => state.user);
   const [filter, setFilter] = useState<Filter>("all");
   const params = useMemo(
     () => ({
       is_overdue: filter === "overdue" ? "true" : undefined,
       personal: filter === "personal" ? "true" : undefined,
-      assigned_to: filter === "mine" ? user?.id : undefined
+      // «Мои» = автор/исполнитель/контролёр (единый серверный фильтр, как на вебе).
+      mine: filter === "mine" ? "true" : undefined
     }),
-    [filter, user?.id]
+    [filter]
   );
   const issues = useQuery({ queryKey: ["issues", params], queryFn: () => fetchIssues(params) });
   const visible = issues.data ?? [];

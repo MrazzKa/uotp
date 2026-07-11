@@ -184,15 +184,17 @@ def apply_role_visibility(statement, user: User):
     role = user.role.code if user.role else None
     if role in LEADERSHIP_ROLES or user.controls_all_spheres:
         return statement
-    statement = statement.outerjoin(IssueAssignee, IssueAssignee.issue_id == Issue.id).where(
-        or_(
-            Issue.created_by_id == user.id,
-            Issue.controller_id == user.id,
-            Issue.assigned_to_id == user.id,
-            IssueAssignee.user_id == user.id,
-            and_(Issue.sphere_id.is_not(None), Issue.sphere_id == user.sphere_id),
-        )
-    )
+    conditions = [
+        Issue.created_by_id == user.id,
+        Issue.controller_id == user.id,
+        Issue.assigned_to_id == user.id,
+        IssueAssignee.user_id == user.id,
+        and_(Issue.sphere_id.is_not(None), Issue.sphere_id == user.sphere_id),
+    ]
+    if role == "OPERATOR":
+        # Оператор видит нераспределённые задачи, чтобы их распределять.
+        conditions.append(Issue.assigned_to_id.is_(None))
+    statement = statement.outerjoin(IssueAssignee, IssueAssignee.issue_id == Issue.id).where(or_(*conditions))
     return statement
 
 
@@ -541,6 +543,7 @@ async def list_issues(
     source: str | None = None,
     is_overdue: bool | None = None,
     personal: bool | None = None,
+    mine: bool | None = None,
     q: str | None = None,
     cursor: str | None = None,
     limit: int = 50,
@@ -565,6 +568,15 @@ async def list_issues(
         filters.append(Issue.source == source)
     if is_overdue is not None:
         filters.append(Issue.is_overdue.is_(is_overdue))
+    if mine:
+        # Прямая причастность: я исполнитель, контролёр или автор.
+        filters.append(
+            or_(
+                Issue.assigned_to_id == user.id,
+                Issue.controller_id == user.id,
+                Issue.created_by_id == user.id,
+            )
+        )
     if personal:
         statement = statement.join(
             IssuePersonalMark,

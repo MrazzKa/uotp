@@ -1,7 +1,7 @@
 from datetime import datetime, timedelta
 from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
-from sqlalchemy import case, distinct, func, or_, select
+from sqlalchemy import and_, case, distinct, func, or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.modules.catalog.models import Department, District, Sphere
@@ -26,16 +26,18 @@ def visible_issue_ids_statement(user: User):
     statement = select(Issue.id).where(Issue.tenant_id == user.tenant_id, Issue.deleted_at.is_(None))
     role = user.role.code if user.role else None
     if role not in LEADERSHIP_ROLES and not user.controls_all_spheres:
+        conditions = [
+            Issue.created_by_id == user.id,
+            Issue.controller_id == user.id,
+            Issue.assigned_to_id == user.id,
+            IssueAssignee.user_id == user.id,
+            and_(Issue.sphere_id.is_not(None), Issue.sphere_id == user.sphere_id),
+        ]
+        if role == "OPERATOR":
+            conditions.append(Issue.assigned_to_id.is_(None))
         statement = (
             statement.outerjoin(IssueAssignee, IssueAssignee.issue_id == Issue.id)
-            .where(
-                or_(
-                    Issue.created_by_id == user.id,
-                    Issue.controller_id == user.id,
-                    Issue.assigned_to_id == user.id,
-                    IssueAssignee.user_id == user.id,
-                )
-            )
+            .where(or_(*conditions))
             .distinct()
         )
     return statement

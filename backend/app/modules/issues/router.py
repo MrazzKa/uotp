@@ -56,8 +56,9 @@ def serialize_issue_detail(issue: Issue, user: User) -> IssueDetail:
     detail = IssueDetail.model_validate(issue)
     detail.attachments = [_serialize_attachment(item) for item in issue.attachments]
     detail.on_personal_control = any(mark.user_id == user.id for mark in issue.personal_marks)
-    # Специалистам-исполнителям не показываем служебные (internal) комментарии.
-    if user.role is not None and user.role.code == "SPECIALIST":
+    # Исполнителям (в т.ч. внешним подрядчикам) не показываем служебные (internal)
+    # комментарии — внутренняя переписка акимата не должна утекать наружу.
+    if user.role is not None and user.role.code in {"SPECIALIST", "CONTRACTOR"}:
         detail.comments = [c for c in detail.comments if not c.is_internal]
     return detail
 
@@ -86,6 +87,7 @@ async def list_issues_endpoint(
     source: str | None = None,
     is_overdue: bool | None = None,
     personal: bool | None = None,
+    mine: bool | None = None,
     q: str | None = None,
     cursor: str | None = None,
     limit: int = Query(default=50, ge=1, le=100),
@@ -103,6 +105,7 @@ async def list_issues_endpoint(
         source=source,
         is_overdue=is_overdue,
         personal=personal,
+        mine=mine,
         q=q,
         cursor=cursor,
         limit=limit,

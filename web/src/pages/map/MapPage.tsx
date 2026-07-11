@@ -46,6 +46,7 @@ export function MapPage() {
   const [zoom, setZoom] = useState(12);
   const [districtsVisible, setDistrictsVisible] = useState(true);
   const [heatmapVisible, setHeatmapVisible] = useState(false);
+  const [mapError, setMapError] = useState(false);
   const [filters, setFilters] = useState<Filters>({ status: "", category: "", district: "", priority: "", assigned_to: "", is_overdue: "" });
   const catalogs = useQuery({ queryKey: ["catalogs"], queryFn: fetchCatalogs });
   const mapParams = useMemo(
@@ -75,6 +76,12 @@ export function MapPage() {
       zoom: 12
     });
     map.addControl(new maplibregl.NavigationControl({ visualizePitch: false }), "top-right");
+    // В закрытой сети акимата внешние тайлы могут не загрузиться — показываем
+    // аккуратную панель вместо битой карты, работа при этом не ломается.
+    map.on("error", (event) => {
+      const message = String((event as { error?: { message?: string } })?.error?.message ?? "");
+      if (/style|tile|source|fetch|load|network/i.test(message)) setMapError(true);
+    });
     map.on("moveend", () => {
       const bounds = map.getBounds();
       setBbox(`${bounds.getWest()},${bounds.getSouth()},${bounds.getEast()},${bounds.getNorth()}`);
@@ -117,7 +124,8 @@ export function MapPage() {
       const props = feature.properties as Record<string, string | boolean>;
       popupRef.current?.remove();
       const overdue = props.is_overdue === "true" || props.is_overdue === true;
-      const html = `<div class="uotp-popup"><strong>${props.public_number}</strong><br/>${props.status}${overdue ? ` - ${t("overdue")}` : ""}<br/>${props.category ?? ""}<br/>${props.address ?? ""}<br/><button data-issue="${props.id}">${t("open")}</button></div>`;
+      const statusLabel = t(`st_${props.status}`, String(props.status));
+      const html = `<div class="uotp-popup"><strong>${props.public_number}</strong><br/>${statusLabel}${overdue ? ` - ${t("overdue")}` : ""}<br/>${props.category ?? ""}<br/>${props.address ?? ""}<br/><button data-issue="${props.id}">${t("open")}</button></div>`;
       const popup = new maplibregl.Popup({ closeButton: true }).setLngLat(event.lngLat).setHTML(html).addTo(map);
       popup.getElement().querySelector("button")?.addEventListener("click", () => {
         navigate(`/issues/${props.id}`);
@@ -139,17 +147,26 @@ export function MapPage() {
             <Button variant="muted" className="w-10 px-0" onClick={() => navigate("/issues")}><X size={18} /></Button>
           </div>
           <div className="grid gap-3">
-            <Select value={filters.status} onChange={(status) => setFilters({ ...filters, status })} label={t("status")} items={["NEW", "QUALIFICATION", "ASSIGNED", "ACCEPTED", "IN_PROGRESS", "COMPLETED", "INSPECTION", "CLOSED"].map((value) => ({ value, label: value }))} />
+            <Select value={filters.status} onChange={(status) => setFilters({ ...filters, status })} label={t("status")} items={ALL_STATUSES.map((value) => ({ value, label: t(`st_${value}`, value) }))} />
             <Select value={filters.category} onChange={(category) => setFilters({ ...filters, category })} label={t("category")} items={(catalogs.data?.categories ?? []).map((item) => ({ value: item.id, label: i18n.language === "kk" ? item.name_kk : item.name_ru }))} />
             <Select value={filters.district} onChange={(district) => setFilters({ ...filters, district })} label={t("district")} items={(catalogs.data?.districts ?? []).map((item) => ({ value: item.id, label: i18n.language === "kk" ? item.name_kk : item.name_ru }))} />
             <Select value={filters.priority} onChange={(priority) => setFilters({ ...filters, priority })} label={t("priority")} items={["LOW", "MEDIUM", "HIGH", "CRITICAL"].map((value) => ({ value, label: value }))} />
             <Button variant={filters.is_overdue ? "accent" : "muted"} onClick={() => setFilters({ ...filters, is_overdue: filters.is_overdue ? "" : "true" })}><AlertTriangle size={18} />{t("onlyOverdue")}</Button>
             <Button variant={districtsVisible ? "default" : "muted"} onClick={() => setDistrictsVisible(!districtsVisible)}><Layers size={18} />{t("districtsLayer")}</Button>
             <Button variant={heatmapVisible ? "default" : "muted"} onClick={() => setHeatmapVisible(!heatmapVisible)}><Thermometer size={18} />{t("heatmap")}</Button>
-            <Button variant="accent" onClick={() => mapRef.current?.flyTo({ center: CENTER, zoom: 12 })}><MapPinned size={18} />{t("petropavlovsk")}</Button>
+            <Button variant="accent" onClick={() => mapRef.current?.flyTo({ center: CENTER, zoom: 12 })}><MapPinned size={18} />{t("recenter")}</Button>
           </div>
         </aside>
-        <div ref={containerRef} className="min-h-[70vh] md:min-h-0" />
+        <div className="relative min-h-[70vh] md:min-h-0">
+          <div ref={containerRef} className="h-full w-full" />
+          {mapError ? (
+            <div className="absolute inset-0 z-20 flex flex-col items-center justify-center gap-2 bg-surface/95 p-6 text-center">
+              <MapPinned size={32} className="text-mutedText" />
+              <p className="text-base font-semibold">{t("mapUnavailable")}</p>
+              <p className="max-w-sm text-sm text-mutedText">{t("mapUnavailableHint")}</p>
+            </div>
+          ) : null}
+        </div>
       </div>
     </main>
   );

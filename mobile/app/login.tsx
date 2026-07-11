@@ -12,8 +12,8 @@ import { useTheme } from "../src/theme/store";
 export default function LoginScreen() {
   const { t, i18n } = useTranslation();
   const { colors, toggleTheme } = useTheme();
-  const [identifier, setIdentifier] = useState("executor@uotp.local");
-  const [password, setPassword] = useState("demo123");
+  const [identifier, setIdentifier] = useState("");
+  const [password, setPassword] = useState("");
   const mutation = useMutation({
     mutationFn: async () => {
       await login(identifier, password);
@@ -45,6 +45,8 @@ export default function LoginScreen() {
 
         <TextInput
           autoCapitalize="none"
+          autoComplete="email"
+          keyboardType="email-address"
           placeholder={t("identifier")}
           placeholderTextColor={colors.mutedText}
           style={[styles.input, { borderColor: colors.border, color: colors.text, backgroundColor: colors.surface2 }]}
@@ -59,7 +61,11 @@ export default function LoginScreen() {
           value={password}
           onChangeText={setPassword}
         />
-        <Pressable disabled={mutation.isPending} style={[styles.primaryButton, { backgroundColor: colors.primary }]} onPress={() => mutation.mutate()}>
+        <Pressable
+          disabled={mutation.isPending || !identifier || !password}
+          style={[styles.primaryButton, { backgroundColor: colors.primary, opacity: !identifier || !password ? 0.5 : 1 }]}
+          onPress={() => mutation.mutate()}
+        >
           <Ionicons name="log-in-outline" size={22} color="#FFFFFF" />
           <Text style={styles.primaryText}>{mutation.isPending ? "..." : t("signIn")}</Text>
         </Pressable>
